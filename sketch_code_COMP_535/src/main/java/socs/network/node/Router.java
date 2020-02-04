@@ -1,9 +1,15 @@
 package socs.network.node;
 
+import socs.network.message.LSA;
+import socs.network.message.LinkDescription;
 import socs.network.util.Configuration;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.UnknownHostException;
 
 
 public class Router {
@@ -50,14 +56,51 @@ public class Router {
    */
   private void processAttach(String processIP, short processPort,
                              String simulatedIP, short weight) {
-
+	  //add new "Link" instances to the "port" array
+	  RouterDescription rd2 = new RouterDescription();
+	  rd2.processIPAddress = processIP;
+	  rd2.processPortNumber = processPort;
+	  rd2.simulatedIPAddress = simulatedIP;
+	  
+	  boolean openPort = false;
+	  for(int i=0; i < ports.length; i++){
+		  if(ports[i] == null){
+			  this.ports[i] = new Link(rd, rd2);
+			  openPort = true;
+			  break;
+		  }
+	  }
+	  
+	  //if all ports are occupied the connection isn't established
+	  if(openPort){
+		  //create link description
+		  LinkDescription ld = new LinkDescription();
+		  ld.linkID = simulatedIP;
+		  ld.portNum = processPort;
+		  ld.tosMetrics = weight;
+		  
+		  LSA currLsa = lsd._store.get(rd.simulatedIPAddress); //create lsa and add link description
+		  currLsa.links.add(ld); //add link to currLsa in LinkStateDatabase   
+	  }
+	  
+	  //server socket??
   }
 
   /**
    * broadcast Hello to neighbors
    */
   private void processStart() {
-
+	  try{
+		  Socket socket = new Socket(rd.simulatedIPAddress, rd.processPortNumber);	//client
+		  //ServerSocket serverSocket = new ServerSocket(rd.processPortNumber);	//server
+	  }
+      catch (UnknownHostException e) {
+		  System.out.println("Socket timed out!"); 
+		  e.printStackTrace();
+      } catch (IOException e) {
+    	  e.printStackTrace();
+	  }
+	  
   }
 
   /**
@@ -76,7 +119,11 @@ public class Router {
    * output the neighbors of the routers
    */
   private void processNeighbors() {
-
+	  for(int i = 0; i < ports.length; i++){
+		  if(ports[i] != null){
+			  System.out.println("IP Address of the " + ports[i].router2.simulatedIPAddress);
+		  }
+	  }
   }
 
   /**
