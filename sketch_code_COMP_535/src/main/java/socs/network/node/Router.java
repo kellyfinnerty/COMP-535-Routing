@@ -5,17 +5,13 @@ import socs.network.message.LinkDescription;
 import socs.network.message.SOSPFPacket;
 import socs.network.util.Configuration;
 
-import java.awt.List;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
-import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.UnknownHostException;
-import java.util.ArrayList;
 
 public class Router {
 
@@ -66,11 +62,9 @@ public class Router {
 	 * NOTE: this command should not trigger link database synchronization
 	 */
 	private void processAttach(String processIP, short processPort, String simulatedIP, short weight) {
+		System.out.println("Attaching");
 		// add new "Link" instances to the "port" array
-		RouterDescription rd2 = new RouterDescription();
-		rd2.processIPAddress = processIP;
-		rd2.processPortNumber = processPort;
-		rd2.simulatedIPAddress = simulatedIP;
+		RouterDescription rd2 = new RouterDescription(processIP, processPort, simulatedIP, null);
 
 		boolean openPort = false;
 		for (int i = 0; i < ports.length; i++) {
@@ -89,28 +83,22 @@ public class Router {
 			ld.portNum = processPort;
 			ld.tosMetrics = weight;
 
-			LSA currLsa = lsd._store.get(rd.simulatedIPAddress); // create lsa
-																	// and add
-																	// link
-																	// description
+			LSA currLsa = lsd._store.get(rd.simulatedIPAddress); // create lsa and add link description
 			currLsa.links.add(ld); // add link to currLsa in LinkStateDatabase
 		}
 
-		// server socket??
 	}
 
 	/**
 	 * broadcast Hello to neighbors
 	 */
 	private void processStart() {
+		System.out.println("Starting");
 		for (int i = 0; i < ports.length; i++) {
 			if (ports[i] != null) {
-				SOSPFPacket msg = new SOSPFPacket();
-				msg.sospfType = 0;
-				msg.routerID = rd.simulatedIPAddress;
-				msg.neighborID = ports[i].router2.simulatedIPAddress;
-				msg.srcIP = rd.simulatedIPAddress;
-				msg.dstIP = ports[i].router2.simulatedIPAddress;
+				System.out.println("Sending message to " + ports[i].router2.simulatedIPAddress);
+				SOSPFPacket msg = new SOSPFPacket((short)0, rd.simulatedIPAddress, ports[i].router2.simulatedIPAddress, 
+						rd.simulatedIPAddress, ports[i].router2.simulatedIPAddress);
 
 				// Need to handle not getting responses, etc.
 				try {
@@ -131,7 +119,8 @@ public class Router {
 
 					clientSocket.close();
 				} catch (Exception e) {
-
+					System.out.println("Exception in start " + e);
+					//e.printStackTrace();
 				}
 			}
 		}
@@ -213,6 +202,7 @@ public class Router {
 		ServerSocket serverSocket;
 
 		MultiThreadedServer() {
+			System.out.println("Multi-threaded Server created");
 			this.port = 4444; // figure out random port assignment until one is
 								// successful
 			try {
@@ -220,19 +210,21 @@ public class Router {
 			} catch (IOException e) {
 				System.out.println("Could not listen on port " + port);
 				System.exit(-1); // probably should retry another val??
+			} catch (Exception e) {
+				System.out.println("Multi-threaded server could not be created");
 			}
 		}
 
 		public void run() {
 			while (true) {
 				// New client request --> Create client handler to handle it
-				ClientHandler w;
+				ClientHandler ch;
 				try {
-					w = new ClientHandler(serverSocket.accept());
-					Thread t = new Thread(w);
-					t.start();
+					ch = new ClientHandler(serverSocket.accept());
+					Thread t2 = new Thread(ch);
+					t2.start();
 				} catch (Exception e) {
-					System.out.println("Accept failed: " + port);
+					System.out.println("Accept and client handler failed: " + port);
 					System.exit(-1);
 				}
 			}
@@ -251,6 +243,7 @@ public class Router {
 		Thread t;
 
 		ClientHandler(Socket clientSocket) {
+			System.out.println("Client Handler created");
 			this.clientSocket = clientSocket;
 		}
 
@@ -262,13 +255,13 @@ public class Router {
 				objectInputStream = new ObjectInputStream(clientSocket.getInputStream());
 				objectOutputStream = new ObjectOutputStream(clientSocket.getOutputStream());
 			} catch (Exception e) {
-				System.out.println("Reading input or getting output failed");
+				System.out.println("Reading input or getting output failed \n" + e);
 				System.exit(-1);
 			}
 
 			while (true) {
 				try {
-					SOSPFPacket serverMsg = (SOSPFPacket) objectInputStream.readObject();
+					SOSPFPacket serverMsg = (SOSPFPacket)objectInputStream.readObject();
 
 					// if hello message
 					if (serverMsg.sospfType == 0) {
@@ -277,14 +270,17 @@ public class Router {
 					}
 
 				} catch (Exception e) {
-
+					System.out.println("Could not read client message\n" + e);
 				}
 			}
 		}
 
 		private void handleHelloMessage(SOSPFPacket serverMsg){
+			System.out.println("Hello message");
+			
 			RouterDescription foundNeighbor = null;
 			boolean emptyNeighbor = false;
+			int availableIndex = -1;
 			
 			//check if neighbor exists
 			for(int i=0; i < ports.length; i++){
@@ -294,28 +290,29 @@ public class Router {
 				}
 				if(ports[i] == null) {
 					emptyNeighbor = true;
+					availableIndex = i;
 				}
 			}
 			
 			//handle not finding neighbor & not having empty slots
 			if(foundNeighbor == null && !emptyNeighbor){
-				//reject
-				//exit
+				//reject & exit
+				System.out.println("No available neighbor slots");
+				return;	
 			}
 			else if(foundNeighbor == null && emptyNeighbor){
 				//add neighbor to ports list
-				foundNeighbor = null;
+				foundNeighbor = new RouterDescription(serverMsg.srcProcessIP, serverMsg.srcProcessPort, serverMsg.srcIP, null);
+				ports[availableIndex] = new Link(rd, foundNeighbor);
 			}
 			
 			//neighbor exists, respond
+			System.out.println("received HELLO from " + foundNeighbor.simulatedIPAddress);
 			foundNeighbor.status = RouterStatus.INIT;
+			System.out.println("set " + foundNeighbor.simulatedIPAddress + "to INIT");
 			
-			  SOSPFPacket msg = new SOSPFPacket();
-			  msg.sospfType = 0;
-			  msg.routerID = rd.simulatedIPAddress;
-			  msg.neighborID = foundNeighbor.simulatedIPAddress;
-			  msg.srcIP = rd.simulatedIPAddress;
-			  msg.dstIP = foundNeighbor.simulatedIPAddress;
+			SOSPFPacket msg = new SOSPFPacket((short)0, rd.simulatedIPAddress, foundNeighbor.simulatedIPAddress, 
+					rd.simulatedIPAddress, foundNeighbor.simulatedIPAddress);
 			
 		}
 
