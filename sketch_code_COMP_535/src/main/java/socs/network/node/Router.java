@@ -26,10 +26,16 @@ public class Router {
 
   //assuming that all routers are with 4 ports
   Link[] ports = new Link[4];
+  
+  ServerHandler server;
 
   public Router(Configuration config) {
     rd.simulatedIPAddress = config.getString("socs.network.router.ip");
+    rd.processIPAddress = "127.1.1.0";
+    rd.processPortNumber = Short.valueOf(config.getString("socs.network.router.port"));
     lsd = new LinkStateDatabase(rd);
+    server = new ServerHandler();
+    server.start();
   }
 
   /**
@@ -112,45 +118,16 @@ public class Router {
 	  }
 	  
 	  // wait for all the HELLO messages to finish transmitting
-	  try {
-		  for (HelloSocket h: hellos) {
-			  h.join();
-		  }
-	  }catch(InterruptedException e) {
-		  System.out.println("HelloSocket interrupted before finishing");
-	  }
+//	  try {
+//		  for (HelloSocket h: hellos) {
+//			  h.join();
+//		  }
+//	  }catch(InterruptedException e) {
+//		  System.out.println("HelloSocket interrupted before finishing");
+//	  }
 	  
 	  
-	  // start server socket to listen to others' messages
-	  try {
-		  int serverPort = (int)Math.random()*(3000)+1500;
-		  ServerSocket serverS = new ServerSocket(serverPort);
-		  System.out.println("Server established "+rd.simulatedIPAddress+" port "+serverPort);
-		  while (true) {
-			  try
-			  {
-				  Socket serverSide = serverS.accept();
-				  System.out.println("Accepted ");
-				  
-				  // start the thread to handle incoming messages
-				  ClientMsgHandler msgHandler = new ClientMsgHandler(serverSide);
-				  msgHandler.start();
-				  
-			  }catch(SocketTimeoutException s)
-			  {
-				  System.out.println("Socket timed out!");
-				  break;
-			  }catch(IOException e)
-			  {
-				  e.printStackTrace();
-				  break;
-			  }
-		  }
-		  serverS.close();
-	  }catch(IOException e)
-	  {
-		  e.printStackTrace();
-	  }
+	  
   
 
   }
@@ -360,6 +337,44 @@ public class Router {
 		  
 	  }
   }
+  
+  
+  class ServerHandler extends Thread {
+	  @Override 
+	  public void run() {
+		// start server socket to listen to others' messages
+		  try {
+			  int serverPort = (int)Math.random()*(3000)+1500;
+			  ServerSocket serverS = new ServerSocket(serverPort);
+			  System.out.println("Server established "+rd.simulatedIPAddress+" port "+serverPort);
+			  while (true) {
+				  try
+				  {
+					  Socket serverSide = serverS.accept();
+					  System.out.println("Accepted ");
+					  
+					  // start the thread to handle incoming messages
+					  ClientMsgHandler msgHandler = new ClientMsgHandler(serverSide);
+					  msgHandler.start();
+					  
+				  }catch(SocketTimeoutException s)
+				  {
+					  System.out.println("Socket timed out!");
+					  break;
+				  }catch(IOException e)
+				  {
+					  e.printStackTrace();
+					  break;
+				  }
+			  }
+			  serverS.close();
+		  }catch(IOException e)
+		  {
+			  e.printStackTrace();
+		  }
+	  }
+  }
+  
 
 }
 
