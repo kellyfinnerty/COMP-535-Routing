@@ -74,7 +74,7 @@ public class Router {
 	  
 	  // create new Link object in ports
 	  RouterDescription rd2 = new RouterDescription(processIP, processPort, simulatedIP,null);
-	  Link newPort = new Link(rd, rd1); // needs second RouterDescription
+	  Link newPort = new Link(rd, rd2); // needs second RouterDescription
 	  boolean openPort = false;
 
 	  // find a non-occupied port and insert
@@ -115,7 +115,7 @@ public class Router {
 		// generate a HELLO message
 		//CHeck that these are the right values
 		if(l != null){
-		  SOSPFPacket helloMsg = new SOSPFPacket((short)0, rd.simulatedIPAddress, neighbor.simulatedIPAddress,
+		  SOSPFPacket helloMsg = new SOSPFPacket((short)0, rd.simulatedIPAddress, l.router2.simulatedIPAddress,
 		  	rd.simulatedIPAddress, l.router2.processIPAddress);
 		  helloMsg.srcProcessPort = rd.processPortNumber;
 		  // what is neighborID??? -- a long string of all neighbors, or a list
@@ -311,9 +311,9 @@ public class Router {
 				  response.srcProcessIP = rd.processIPAddress;
 				  response.srcProcessPort = rd.processPortNumber;
 				  
-				  for (int i = 0; ports.length; i++) {
+				  for (int i = 0; i < ports.length; i++) {
 					  if (ports[i].router2.processIPAddress.equals(receivedMsg.srcProcessIP)) {
-						  neighbor = ports[i];
+						  neighbor = ports[i].router2;
 					  }
 					  if (ports[i] == null){
 					  	  availableIndex = i;
@@ -337,7 +337,7 @@ public class Router {
 				  System.out.println("set " + neighbor.simulatedIPAddress + " state to INIT");
 
 
-				  response.dstIP = l.router2.simulatedIPAddress;
+				  response.dstIP = neighbor.simulatedIPAddress;
 
 				  ObjectOutputStream out = new ObjectOutputStream(server.getOutputStream());
 				  out.writeObject(response);
