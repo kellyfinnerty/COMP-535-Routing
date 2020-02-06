@@ -74,29 +74,32 @@ public class Router {
 	 * NOTE: this command should not trigger link database synchronization
 	 */
 	private void processAttach(String processIP, short processPort, String simulatedIP, short weight) {
-
-		// create new Link object in ports
-		RouterDescription rd2 = new RouterDescription(processIP, processPort, simulatedIP, null);
-		Link newPort = new Link(rd, rd2); // needs second RouterDescription
-		boolean openPort = false;
+		
+		if(rd.simulatedIPAddress.equals(simulatedIP)){
+			return; 	//Don't want to attach to itself
+		}
+		
+		int openPort = -1;
+		boolean alreadyNeighbor = false;
 
 		// find a non-occupied port and insert
 		for (int i = 0; i < 4; i++) {
 			if (ports[i] == null) {
-				ports[i] = newPort;
-				openPort = true;
-				break;
+				openPort = i;
+			}
+			else if(ports[i].router2.simulatedIPAddress.equals(simulatedIP)){
+				alreadyNeighbor = true;
 			}
 		}
 
-		if (openPort) {
-			// update the link weight in LSA
-			LSA current = lsd._store.get(rd.simulatedIPAddress);
+		// Make sure there is an open neighbor spot and it's not already a neighbor
+		if (openPort != -1 && alreadyNeighbor) {
+			RouterDescription rd2 = new RouterDescription(processIP, processPort, simulatedIP);
+			ports[openPort] = new Link(rd, rd2);
+			
+			LSA current = lsd._store.get(rd.simulatedIPAddress);	// update the link weight in LSA
 
-			LinkDescription newLink = new LinkDescription();
-			newLink.portNum = processPort;
-			newLink.tosMetrics = weight;
-			newLink.linkID = simulatedIP;
+			LinkDescription newLink = new LinkDescription(simulatedIP, processPort, weight);
 			// how to name the linkID??? -- the IP of the destination of link
 			current.links.add(newLink);
 		} else {
@@ -270,7 +273,11 @@ public class Router {
 						}
 					}
 				}
+				in.close();
+				out.close();
 				client.close();
+				System.out.println("Close HelloSocket");
+				return;
 			} catch (ClassNotFoundException exp) {
 				System.out.println("No valid response message received");
 			} catch (IOException e) {
@@ -360,8 +367,11 @@ public class Router {
 							}
 						}*/
 					}
+					out.close();
 				}
+				in.close();
 				server.close();
+				System.out.println("Close ClientMsgHandler");
 			} catch (ClassNotFoundException c) {
 				System.out.println("Valid response message not received");
 			} catch (Exception e) {
@@ -430,6 +440,7 @@ public class Router {
 				try {
 					ch = new ClientMsgHandler(serverSocket.accept());
 					ch.start();
+					System.out.println("Here");
 				} catch (Exception e) {
 					System.out.println("Accept and client handler failed: " + port);
 					// System.exit(-1);
