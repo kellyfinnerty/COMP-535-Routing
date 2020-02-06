@@ -19,4 +19,10 @@ public class RouterDescription {
 		simulatedIPAddress = simulatedIP;
 		status = s;
 	}
+	
+	public RouterDescription(String processIP, short processPort, String simulatedIP) {
+		processIPAddress = processIP;
+		processPortNumber = processPort;
+		simulatedIPAddress = simulatedIP;
+	}
 }

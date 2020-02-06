@@ -21,12 +21,16 @@ public class Router {
 
 	// assuming that all routers are with 4 ports
 	Link[] ports = new Link[4];
-	MultiThreadedServer server; // added
+	MultiThreadedServer server;
 
 	public Router(Configuration config) {
 		rd.simulatedIPAddress = config.getString("socs.network.router.ip");
 		lsd = new LinkStateDatabase(rd);
-		server = new MultiThreadedServer(); // added this
+		
+		rd.processIPAddress = "127.1.1.0";
+		rd.processPortNumber = Short.valueOf(config.getString("socs.network.router.port"));
+		
+		server = new MultiThreadedServer();
 		server.start();
 	}
 
@@ -63,13 +67,14 @@ public class Router {
 	 */
 	private void processAttach(String processIP, short processPort, String simulatedIP, short weight) {
 		System.out.println("Attaching");
+		
 		// add new "Link" instances to the "port" array
-		RouterDescription rd2 = new RouterDescription(processIP, processPort, simulatedIP, null);
+		RouterDescription rd2 = new RouterDescription(processIP, processPort, simulatedIP);
 
 		boolean openPort = false;
 		for (int i = 0; i < ports.length; i++) {
 			if (ports[i] == null) {
-				this.ports[i] = new Link(rd, rd2);
+				this.ports[i] = new Link(this.rd, rd2);
 				openPort = true;
 				break;
 			}
@@ -83,8 +88,11 @@ public class Router {
 			ld.portNum = processPort;
 			ld.tosMetrics = weight;
 
-			LSA currLsa = lsd._store.get(rd.simulatedIPAddress); // create lsa and add link description
+			LSA currLsa = this.lsd._store.get(rd.simulatedIPAddress); // create lsa and add link description
 			currLsa.links.add(ld); // add link to currLsa in LinkStateDatabase
+		}
+		else{
+			System.out.println("No open ports");
 		}
 
 	}
@@ -94,32 +102,42 @@ public class Router {
 	 */
 	private void processStart() {
 		System.out.println("Starting");
+		
+		//Loop through ports to send message to all neighbors
 		for (int i = 0; i < ports.length; i++) {
+			//Check that neighbor isn't null
 			if (ports[i] != null) {
-				System.out.println("Sending message to " + ports[i].router2.simulatedIPAddress);
-				SOSPFPacket msg = new SOSPFPacket((short)0, rd.simulatedIPAddress, ports[i].router2.simulatedIPAddress, 
+				RouterDescription neighbor = ports[i].router2;
+				
+				System.out.println("Sending message to " + neighbor.simulatedIPAddress);
+				
+				//Create hello message
+				SOSPFPacket msg = new SOSPFPacket((short)0, rd.simulatedIPAddress, neighbor.simulatedIPAddress, 
 						rd.simulatedIPAddress, ports[i].router2.simulatedIPAddress);
 
 				// Need to handle not getting responses, etc.
 				try {
-					RouterDescription neighbor = ports[i].router2;
 					Socket clientSocket = new Socket(neighbor.processIPAddress, neighbor.processPortNumber);
 
 					ObjectInputStream inputStream = new ObjectInputStream(clientSocket.getInputStream());
 					ObjectOutputStream outputStream = new ObjectOutputStream(clientSocket.getOutputStream());
 
 					outputStream.writeObject(msg);
-
 					SOSPFPacket response = (SOSPFPacket) inputStream.readObject();
-					if (response.sospfType == 1) {
+					
+					//Check it's a hello message
+					if (response.sospfType == 0) {
+						System.out.println("received HELLO from " + response.srcIP);
+						
 						neighbor.status = RouterStatus.TWO_WAY;
+						System.out.println("set " + response.srcIP + " to TWO_WAY");
+						
 						outputStream.writeObject(msg); // send 2nd hello message
-														// (redo?)
 					}
 
 					clientSocket.close();
 				} catch (Exception e) {
-					System.out.println("Exception in start " + e);
+					System.out.println("Exception in Start " + e);
 					//e.printStackTrace();
 				}
 			}
@@ -203,13 +221,13 @@ public class Router {
 
 		MultiThreadedServer() {
 			System.out.println("Multi-threaded Server created");
-			this.port = 4444; // figure out random port assignment until one is
-								// successful
+			this.port = rd.processPortNumber;	//set port as the one from conf file
+
 			try {
 				this.serverSocket = new ServerSocket(port);
 			} catch (IOException e) {
-				System.out.println("Could not listen on port " + port);
-				System.exit(-1); // probably should retry another val??
+				System.out.println("Could not listen on port " + this.port);
+				//System.exit(-1); 
 			} catch (Exception e) {
 				System.out.println("Multi-threaded server could not be created");
 			}
@@ -221,11 +239,10 @@ public class Router {
 				ClientHandler ch;
 				try {
 					ch = new ClientHandler(serverSocket.accept());
-					Thread t2 = new Thread(ch);
-					t2.start();
+					ch.start();
 				} catch (Exception e) {
 					System.out.println("Accept and client handler failed: " + port);
-					System.exit(-1);
+					//System.exit(-1);
 				}
 			}
 		}
@@ -256,7 +273,7 @@ public class Router {
 				objectOutputStream = new ObjectOutputStream(clientSocket.getOutputStream());
 			} catch (Exception e) {
 				System.out.println("Reading input or getting output failed \n" + e);
-				System.exit(-1);
+				//System.exit(-1);
 			}
 
 			while (true) {
@@ -266,7 +283,7 @@ public class Router {
 					// if hello message
 					if (serverMsg.sospfType == 0) {
 						// Check the RouterStatus first??
-						handleHelloMessage(serverMsg);
+						handleHelloMessage(serverMsg, objectInputStream, objectOutputStream);
 					}
 
 				} catch (Exception e) {
@@ -275,34 +292,34 @@ public class Router {
 			}
 		}
 
-		private void handleHelloMessage(SOSPFPacket serverMsg){
+		private void handleHelloMessage(SOSPFPacket serverMsg, ObjectInputStream in, ObjectOutputStream out) throws Exception{
 			System.out.println("Hello message");
 			
 			RouterDescription foundNeighbor = null;
-			boolean emptyNeighbor = false;
+			boolean emptyPort = false;
 			int availableIndex = -1;
 			
 			//check if neighbor exists
-			for(int i=0; i < ports.length; i++){
+			for(int i = 0; i < ports.length; i++){
 				if(ports[i].router2.simulatedIPAddress == serverMsg.srcIP){
 					foundNeighbor = ports[i].router2;
 					break;
 				}
 				if(ports[i] == null) {
-					emptyNeighbor = true;
+					emptyPort = true;
 					availableIndex = i;
 				}
 			}
 			
 			//handle not finding neighbor & not having empty slots
-			if(foundNeighbor == null && !emptyNeighbor){
+			if(foundNeighbor == null && !emptyPort){
 				//reject & exit
 				System.out.println("No available neighbor slots");
 				return;	
 			}
-			else if(foundNeighbor == null && emptyNeighbor){
+			else if(foundNeighbor == null && emptyPort){
 				//add neighbor to ports list
-				foundNeighbor = new RouterDescription(serverMsg.srcProcessIP, serverMsg.srcProcessPort, serverMsg.srcIP, null);
+				foundNeighbor = new RouterDescription(serverMsg.srcProcessIP, serverMsg.srcProcessPort, serverMsg.srcIP);
 				ports[availableIndex] = new Link(rd, foundNeighbor);
 			}
 			
@@ -314,6 +331,16 @@ public class Router {
 			SOSPFPacket msg = new SOSPFPacket((short)0, rd.simulatedIPAddress, foundNeighbor.simulatedIPAddress, 
 					rd.simulatedIPAddress, foundNeighbor.simulatedIPAddress);
 			
+			out.writeObject(msg);
+			SOSPFPacket serverMsg2 = (SOSPFPacket)in.readObject();
+			
+			// if hello message, how much should we check???
+			if(serverMsg2.sospfType == 0){
+				System.out.println("received HELLO from " + foundNeighbor.simulatedIPAddress);
+				foundNeighbor.status = RouterStatus.TWO_WAY;
+				System.out.println("set " + foundNeighbor.simulatedIPAddress + "to TWO_WAY");
+			}
+
 		}
 
 		public void start() {
