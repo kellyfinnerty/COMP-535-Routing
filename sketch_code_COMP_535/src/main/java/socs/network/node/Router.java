@@ -26,7 +26,6 @@ public class Router {
 	// assuming that all routers are with 4 ports
 	Link[] ports = new Link[4];
 
-	//ServerHandler server;
 	MultiThreadedServer server;
 
 	public Router(Configuration config) {
@@ -36,8 +35,6 @@ public class Router {
 
 		lsd = new LinkStateDatabase(rd);
 
-		//server = new ServerHandler();
-		//server.start();
 		this.server = new MultiThreadedServer();
 		server.start();
 	}
@@ -79,7 +76,7 @@ public class Router {
 			return; 	//Don't want to attach to itself
 		}
 		
-		int openPort = -1;
+		int openPort = -1;	//Check if there's an available neighbor port
 		boolean alreadyNeighbor = false;
 
 		// find a non-occupied port and insert
@@ -93,16 +90,18 @@ public class Router {
 		}
 
 		// Make sure there is an open neighbor spot and it's not already a neighbor
-		if (openPort != -1 && alreadyNeighbor) {
+		if (openPort != -1 && !alreadyNeighbor) {
 			RouterDescription rd2 = new RouterDescription(processIP, processPort, simulatedIP);
 			ports[openPort] = new Link(rd, rd2);
 			
 			LSA current = lsd._store.get(rd.simulatedIPAddress);	// update the link weight in LSA
-
 			LinkDescription newLink = new LinkDescription(simulatedIP, processPort, weight);
-			// how to name the linkID??? -- the IP of the destination of link
-			current.links.add(newLink);
-		} else {
+			current.links.add(newLink);	
+		} 
+		else if(alreadyNeighbor){
+			System.out.println("Unable to attach. Already neighbor.");
+		}
+		else {
 			System.out.println("Unable to attach. All ports are occupied.");
 		}
 
@@ -112,34 +111,18 @@ public class Router {
 	 * broadcast Hello to neighbors
 	 */
 	private void processStart() {
-		// a list of all thread that sends HELLO message
-		LinkedList<HelloSocket> hellos = new LinkedList<HelloSocket>();
 
 		for (Link l : ports) {
-			// generate a HELLO message
-			// CHeck that these are the right values
-			if (l != null) {
+			// If null or already initialized skip
+			if (l != null && l.router2.status != RouterStatus.TWO_WAY) {
 				SOSPFPacket helloMsg = new SOSPFPacket((short) 0, rd.simulatedIPAddress, l.router2.simulatedIPAddress,
-						rd.simulatedIPAddress, l.router2.processIPAddress);
-				helloMsg.srcProcessPort = rd.processPortNumber;
-				// what is neighborID??? -- a long string of all neighbors, or a
-				// list
+						rd.simulatedIPAddress, l.router2.simulatedIPAddress, rd.processIPAddress, rd.processPortNumber);
 
-				// start the thread to send HELLO and handle corresponding
-				// response
+				// start the thread to send HELLO and handle corresponding response
 				HelloSocket sendHello = new HelloSocket(l, helloMsg);
 				sendHello.start();
 			}
 		}
-
-		// wait for all the HELLO messages to finish transmitting
-		// try {
-		// for (HelloSocket h: hellos) {
-		// h.join();
-		// }
-		// }catch(InterruptedException e) {
-		// System.out.println("HelloSocket interrupted before finishing");
-		// }
 
 	}
 
@@ -229,14 +212,16 @@ public class Router {
 		// information to be sent
 		public String serverID;
 		public short portNum;
-		public Link l;
+		public RouterDescription rd2;
+		public Link btwlink;
 		public SOSPFPacket message;
 
 		public HelloSocket(Link btwlink, SOSPFPacket msg) {
-			serverID = btwlink.router2.simulatedIPAddress;
-			portNum = btwlink.router2.processPortNumber;
-			l = btwlink; // added this
+			this.rd2 = btwlink.router2;
+			serverID = rd2.simulatedIPAddress;
+			portNum = rd2.processPortNumber;
 			message = msg;
+			this.btwlink = btwlink;
 		}
 
 		@Override
@@ -244,26 +229,24 @@ public class Router {
 			try {
 				// try to connect to the server
 				System.out.println("Connecting to " + serverID + ", " + portNum);
+				
 				// Socket client = new Socket(serverID, portNum);
-				Socket client = new Socket(l.router2.processIPAddress, portNum); // i
-																					// chaged it to use the process IP rather than simulated...
+				Socket client = new Socket(rd2.processIPAddress, portNum);
 
 				System.out.println("Connected to " + serverID + ", " + portNum);
 
-				OutputStream toServer = client.getOutputStream();
-				ObjectOutputStream out = new ObjectOutputStream(toServer);
+				ObjectOutputStream out = new ObjectOutputStream(client.getOutputStream());
 				out.writeObject(message);
 
 				System.out.println("HELLO message sent to " + serverID);
 
 				// get response and check if it is HELLO
-				InputStream serverResp = client.getInputStream();
-				ObjectInputStream in = new ObjectInputStream(serverResp);
+				ObjectInputStream in = new ObjectInputStream(client.getInputStream());
 				SOSPFPacket response = (SOSPFPacket) in.readObject();
 
 				if (response.sospfType == 0) {
 					System.out.println("received HELLO from " + response.srcIP);
-					// why do we need this for loop??? -Kelly
+
 					for (Link l : ports) {
 						if (l != null && l.router2.simulatedIPAddress.equals(serverID)) {
 							// set router2 status and send HELLO again
@@ -273,16 +256,16 @@ public class Router {
 						}
 					}
 				}
+				
 				in.close();
 				out.close();
 				client.close();
-				System.out.println("Close HelloSocket");
-				return;
-			} catch (ClassNotFoundException exp) {
+
+			} 
+			catch (ClassNotFoundException exp) {
 				System.out.println("No valid response message received");
-			} catch (IOException e) {
-				e.printStackTrace();
-			} catch (Exception e) {
+			} 
+			catch (Exception e) {
 				e.printStackTrace();
 			}
 		}
@@ -303,16 +286,14 @@ public class Router {
 				// check the received message
 				SOSPFPacket receivedMsg = (SOSPFPacket) in.readObject();
 
+				// Hello message
 				if (receivedMsg.sospfType == 0) {
-					// System.out.println("received HELLO from "+receivedMsg.srcIP); //should we only print this if it's
-					// a neighbor??? - Kelly
-
-					// check if still null to know if the client is already one of its neighbors
 					RouterDescription neighbor = null;
 					int availableIndex = -1;
+					int currIndex = -1;
 
 					// respond message
-					SOSPFPacket response = new SOSPFPacket(); // just want to check later that this is all correct -kelly
+					SOSPFPacket response = new SOSPFPacket();
 					response.sospfType = 0;
 					response.routerID = rd.simulatedIPAddress;
 					response.srcIP = rd.simulatedIPAddress;
@@ -323,58 +304,58 @@ public class Router {
 						if (ports[i] == null) {
 							availableIndex = i;
 						}
-						else if (ports[i].router2.processIPAddress.equals(receivedMsg.srcProcessIP)) {
+						else if (ports[i].router2.simulatedIPAddress.equals(receivedMsg.srcIP)) {
 							neighbor = ports[i].router2;
+							currIndex = i;
 						}
 					}
 
 					// handle not finding neighbor & not having empty slots
 					if (neighbor == null && availableIndex == -1) {
-						// reject & exit
 						System.out.println("No available neighbor slots");
-						return;
-					} else if (neighbor == null && availableIndex != -1) {
+						in.close();
+						server.close();
+						return; // reject & exit
+					} 
+					else if (neighbor == null && availableIndex != -1) {
 						// add neighbor to ports list
 						neighbor = new RouterDescription(receivedMsg.srcProcessIP, receivedMsg.srcProcessPort,
 								receivedMsg.srcIP);
 						ports[availableIndex] = new Link(rd, neighbor);
+						currIndex = availableIndex;
 					}
 
-					System.out.println("received HELLO from " + neighbor.simulatedIPAddress);
-					neighbor.status = RouterStatus.INIT;
-					System.out.println("set " + neighbor.simulatedIPAddress + " state to INIT");
+					System.out.println("received HELLO from " + ports[currIndex].router2.simulatedIPAddress);
+					ports[currIndex].router2.status = RouterStatus.INIT;
+					System.out.println("set " + ports[currIndex].router2.simulatedIPAddress + " state to INIT");
 
-					response.dstIP = neighbor.simulatedIPAddress;
+					response.dstIP = receivedMsg.srcIP;
 
 					ObjectOutputStream out = new ObjectOutputStream(server.getOutputStream());
 					out.writeObject(response);
 
-					//in = new ObjectInputStream(server.getInputStream()); // ???
 					SOSPFPacket secReceived = (SOSPFPacket) in.readObject();
 
+					//Check hello message
 					if (secReceived.sospfType == 0) {
+						//Check that received srcIP = neighbor.srcIP?
 						System.out.println("received HELLO from " + secReceived.srcIP);
 						
-						neighbor.status = RouterStatus.TWO_WAY;
-						System.out.println("set " + neighbor.simulatedIPAddress + " state to TWO_WAY");
-						response.dstIP = neighbor.simulatedIPAddress;
-						
-/*						for (Link l : ports) {
-							if (l != null && l.router2.processIPAddress.equals(secReceived.srcProcessIP)) {
-								l.router2.status = RouterStatus.TWO_WAY;
-								System.out.println("set " + l.router2.simulatedIPAddress + " state to TWO_WAY");
-								response.dstIP = l.router2.simulatedIPAddress;
-							}
-						}*/
+						ports[currIndex].router2.status = RouterStatus.TWO_WAY;
+						System.out.println("set " + ports[currIndex].router2.simulatedIPAddress + " state to TWO_WAY");
 					}
+					
 					out.close();
 				}
+				
 				in.close();
 				server.close();
-				System.out.println("Close ClientMsgHandler");
-			} catch (ClassNotFoundException c) {
+
+			} 
+			catch (ClassNotFoundException c) {
 				System.out.println("Valid response message not received");
-			} catch (Exception e) {
+			} 
+			catch (Exception e) {
 				e.printStackTrace();
 			}
 
@@ -420,8 +401,7 @@ public class Router {
 
 		MultiThreadedServer() {
 			System.out.println("Multi-threaded Server created");
-			this.port = rd.processPortNumber; // set port as the one from conf
-												// file
+			this.port = rd.processPortNumber; // set port as the one from conf file
 
 			try {
 				this.serverSocket = new ServerSocket(port);
@@ -440,7 +420,6 @@ public class Router {
 				try {
 					ch = new ClientMsgHandler(serverSocket.accept());
 					ch.start();
-					System.out.println("Here");
 				} catch (Exception e) {
 					System.out.println("Accept and client handler failed: " + port);
 					// System.exit(-1);

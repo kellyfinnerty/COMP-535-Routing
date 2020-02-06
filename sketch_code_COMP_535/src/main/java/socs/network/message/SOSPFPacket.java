@@ -30,12 +30,18 @@ public class SOSPFPacket implements Serializable {
 	  
   }
 
-  public SOSPFPacket(short sospfType, String routerID, String neighborID, String srcIP, String dstIP){
+  public SOSPFPacket(short sospfType, String routerID, String neighborID, String srcIP, String dstIP, 
+		  String srcProcessIP, short srcProcessPort){
 	  this.sospfType = sospfType;
+	  
 	  this.routerID = routerID;
 	  this.neighborID = neighborID;
+	  
 	  this.srcIP = srcIP;
 	  this.dstIP = dstIP;
+	  
+	  this.srcProcessIP = srcProcessIP;
+	  this.srcProcessPort = srcProcessPort;
   }
   
 }
