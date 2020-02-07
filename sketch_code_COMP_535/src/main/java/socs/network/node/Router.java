@@ -73,7 +73,7 @@ public class Router {
 	private void processAttach(String processIP, short processPort, String simulatedIP, short weight) {
 		
 		if(rd.simulatedIPAddress.equals(simulatedIP)){
-			System.out.println("Error: Cannot attach Router to itself.");
+			System.out.println("Error: Cannot attach Router to itself."); 
 			return; 	//Don't want to attach to itself
 		}
 		
