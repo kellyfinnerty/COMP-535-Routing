@@ -111,6 +111,7 @@ public class Router {
 	 * broadcast Hello to neighbors
 	 */
 	private void processStart() {
+		LinkedList<HelloSocket> hellos = new LinkedList<HelloSocket>();
 
 		for (Link l : ports) {
 			// If null or already initialized skip
@@ -122,9 +123,20 @@ public class Router {
 				HelloSocket sendHello = new HelloSocket(l, helloMsg);
 				l.router2.status = RouterStatus.INIT;
 				sendHello.start();
+				hellos.add(sendHello);
 				System.out.println("Returned from HelloSocket");
 			}
 		}
+
+		try {
+			for (HelloSocket h: hellos){
+				h.join();
+			}
+		}catch(InterruptedException e) {
+			System.out.println("Failed to wait for all threads sending HELLO");
+	  	}
+
+		
 
 	}
 
@@ -287,6 +299,7 @@ public class Router {
 			}
 			System.out.println("HelloSocket finishes, prepare to exit");
 			return;
+
 		}
 	}
 
