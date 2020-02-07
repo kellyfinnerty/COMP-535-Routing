@@ -134,7 +134,6 @@ public class Router {
 				l.router2.status = RouterStatus.INIT;
 				sendHello.start();
 				hellos.add(sendHello);
-				System.out.println("Returned from HelloSocket");
 			}
 		}
 
@@ -212,7 +211,6 @@ public class Router {
 					processAttach(cmdLine[1], Short.parseShort(cmdLine[2]), cmdLine[3], Short.parseShort(cmdLine[4]));
 				} else if (command.equals("start")) {
 					processStart();
-					System.out.println("FINISHES STASRTTTTTTTTTTT");
 				} else if (command.equals("connect ")) {
 					String[] cmdLine = command.split(" ");
 					processConnect(cmdLine[1], Short.parseShort(cmdLine[2]), cmdLine[3], Short.parseShort(cmdLine[4]));
@@ -307,7 +305,6 @@ public class Router {
 					}
 				}
 			}
-			System.out.println("HelloSocket finishes, prepare to exit");
 			return;
 
 		}
@@ -391,6 +388,7 @@ public class Router {
 				
 				in.close();
 				server.close();
+				System.out.print(">>");
 
 			} 
 			catch (ClassNotFoundException c) {
@@ -416,7 +414,6 @@ public class Router {
 				System.out.println("Server established " + rd.simulatedIPAddress + " port " + serverPort);
 
 				while (true) {
-					System.out.println("While loop");
 					try {
 						// start the thread to handle incoming messages
 						ClientMsgHandler msgHandler = new ClientMsgHandler(serverS.accept());
@@ -443,7 +440,6 @@ public class Router {
 		ServerSocket serverSocket;
 
 		MultiThreadedServer() {
-			System.out.println("Multi-threaded Server created");
 			this.port = rd.processPortNumber; // set port as the one from conf file
 
 			try {
@@ -463,7 +459,6 @@ public class Router {
 				try {
 					ch = new ClientMsgHandler(serverSocket.accept());
 					ch.start();
-					System.out.println("client message handler FINISHES");
 				} catch (Exception e) {
 					System.out.println("Accept and client handler failed: " + port);
 					// System.exit(-1);
