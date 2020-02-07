@@ -12,7 +12,6 @@ import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.net.SocketTimeoutException;
 import java.util.LinkedList;
 
 public class Router {
@@ -63,7 +62,7 @@ public class Router {
 	/**
 	 * attach the link to the remote router, which is identified by the given
 	 * simulated ip; to establish the connection via socket, you need to
-	 * indentify the process IP and process Port; additionally, weight is the
+	 * identify the process IP and process Port; additionally, weight is the
 	 * cost to transmitting data through the link
 	 * <p/>
 	 * NOTE: this command should not trigger link database synchronization
@@ -247,22 +246,18 @@ public class Router {
 
 		@Override
 		public void run() {
-			try {
-				// try to connect to the server
-				System.out.println("Connecting to " + serverID + ", " + portNum);
-				
-				// Socket client = new Socket(serverID, portNum);
-				Socket client = new Socket(rd2.processIPAddress, portNum);
+			Socket client = null;
+			ObjectInputStream in = null;
+			ObjectOutputStream out = null; 
+			
+			try {				
+				client = new Socket(rd2.processIPAddress, portNum);
 
-				System.out.println("Connected to " + serverID + ", " + portNum);
-
-				ObjectOutputStream out = new ObjectOutputStream(client.getOutputStream());
+				out = new ObjectOutputStream(client.getOutputStream());
 				out.writeObject(message);
 
-				System.out.println("HELLO message sent to " + serverID);
-
 				// get response and check if it is HELLO
-				ObjectInputStream in = new ObjectInputStream(client.getInputStream());
+				in = new ObjectInputStream(client.getInputStream());
 				SOSPFPacket response = (SOSPFPacket) in.readObject();
 
 				if (response.sospfType == 0) {
@@ -277,11 +272,6 @@ public class Router {
 						}
 					}
 				}
-				
-				in.close();
-				out.close();
-				client.close();
-
 			} 
 			catch (ClassNotFoundException exp) {
 				System.out.println("No valid response message received");
@@ -303,7 +293,15 @@ public class Router {
 					}
 				}
 			}
-			return;
+			finally {
+				try{
+					in.close();
+					out.close();
+					client.close();
+				} catch (Exception e){
+					System.out.println("Could not close server or I/O stream");
+				}
+			}
 
 		}
 	}
@@ -317,8 +315,11 @@ public class Router {
 
 		@Override
 		public void run() {
+			ObjectInputStream in = null;
+			ObjectOutputStream out = null;
+			
 			try {
-				ObjectInputStream in = new ObjectInputStream(server.getInputStream());
+				in = new ObjectInputStream(server.getInputStream());
 
 				// check the received message
 				SOSPFPacket receivedMsg = (SOSPFPacket) in.readObject();
@@ -368,7 +369,7 @@ public class Router {
 
 					response.dstIP = receivedMsg.srcIP;
 
-					ObjectOutputStream out = new ObjectOutputStream(server.getOutputStream());
+					out = new ObjectOutputStream(server.getOutputStream());
 					out.writeObject(response);
 
 					SOSPFPacket secReceived = (SOSPFPacket) in.readObject();
@@ -381,11 +382,10 @@ public class Router {
 						System.out.println("set " + ports[currIndex].router2.simulatedIPAddress + " state to TWO_WAY");
 					}
 					
-					out.close();
+					
 				}
 				
-				in.close();
-				server.close();
+
 				System.out.print(">>");
 
 			} 
@@ -396,41 +396,19 @@ public class Router {
 				e.printStackTrace();
 
 			}
-			return;
-
-		}
-	}
-
-	class ServerHandler extends Thread {
-		@Override
-		public void run() {
-			// start server socket to listen to others' messages
-			try {
-				short serverPort = rd.processPortNumber;
-				ServerSocket serverS = new ServerSocket(serverPort);
-
-				System.out.println("Server established " + rd.simulatedIPAddress + " port " + serverPort);
-
-				while (true) {
-					try {
-						// start the thread to handle incoming messages
-						ClientMsgHandler msgHandler = new ClientMsgHandler(serverS.accept());
-						msgHandler.start();
-
-					} catch (SocketTimeoutException s) {
-						System.out.println("Socket timed out!");
-						break;
-					} catch (Exception e) {
-						e.printStackTrace();
-						break;
-					}
+			finally{
+				try{
+					in.close();
+					server.close();
+					out.close();
+				} catch(Exception e){
+					System.out.println("Could not close server or I/O stream");
 				}
-				serverS.close();
-			} catch (IOException e) {
-				e.printStackTrace();
 			}
+
 		}
 	}
+	
 
 	class MultiThreadedServer implements Runnable {
 		Thread t;
@@ -444,7 +422,6 @@ public class Router {
 				this.serverSocket = new ServerSocket(port);
 			} catch (IOException e) {
 				System.out.println("Could not listen on port " + this.port);
-				// System.exit(-1);
 			} catch (Exception e) {
 				System.out.println("Multi-threaded server could not be created");
 			}
@@ -459,9 +436,9 @@ public class Router {
 					ch.start();
 				} catch (Exception e) {
 					System.out.println("Accept and client handler failed: " + port);
-					// System.exit(-1);
 				}
 			}
+			
 		}
 
 		public void start() {
