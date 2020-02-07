@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.net.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.LinkedList;
@@ -74,8 +75,6 @@ public class Router {
 			return; 	//Don't want to attach to itself
 		}
 		
-		
-		
 		int openPort = -1;	//Check if there's an available neighbor port
 		boolean alreadyNeighbor = false;
 
@@ -120,15 +119,15 @@ public class Router {
 		LinkedList<HelloSocket> hellos = new LinkedList<HelloSocket>();
 		started = true;
 		
-		for (Link l : ports) {
+		for (int i = 0; i < ports.length; i++) {
 			// If null or already initialized skip
-			if (l != null && l.router2.status != RouterStatus.TWO_WAY) {
-				SOSPFPacket helloMsg = new SOSPFPacket((short) 0, rd.simulatedIPAddress, l.router2.simulatedIPAddress,
-						rd.simulatedIPAddress, l.router2.simulatedIPAddress, rd.processIPAddress, rd.processPortNumber);
+			if (ports[i] != null && ports[i].router2.status != RouterStatus.TWO_WAY) {
+				SOSPFPacket helloMsg = new SOSPFPacket((short) 0, rd.simulatedIPAddress, ports[i].router2.simulatedIPAddress,
+						rd.simulatedIPAddress, ports[i].router2.simulatedIPAddress, rd.processIPAddress, rd.processPortNumber);
 
 				// start the thread to send HELLO and handle corresponding response
-				HelloSocket sendHello = new HelloSocket(l, helloMsg);
-				l.router2.status = RouterStatus.INIT;
+				HelloSocket sendHello = new HelloSocket(ports[i], helloMsg);
+				ports[i].router2.status = RouterStatus.INIT;
 				sendHello.start();
 				hellos.add(sendHello);
 			}
@@ -263,11 +262,11 @@ public class Router {
 				if (response.sospfType == 0) {
 					System.out.println("received HELLO from " + response.srcIP);
 
-					for (Link l : ports) {
-						if (l != null && l.router2.simulatedIPAddress.equals(serverID)) {
+					for (int i = 0; i < ports.length; i++) {
+						if (ports[i] != null && ports[i] != null && ports[i].router2.simulatedIPAddress.equals(serverID)) {
 							// set router2 status and send HELLO again
-							l.router2.status = RouterStatus.TWO_WAY;
-							System.out.println("set " + l.router2.simulatedIPAddress + " state to TWO_WAY");
+							ports[i].router2.status = RouterStatus.TWO_WAY;
+							System.out.println("set " + ports[i].router2.simulatedIPAddress + " state to TWO_WAY");
 							out.writeObject(message);
 						}
 					}
@@ -276,19 +275,20 @@ public class Router {
 			catch (ClassNotFoundException exp) {
 				System.out.println("No valid response message received");
 				// remove this neighbor from the list of ports
-				for (Link l : ports) {
-					if (l.router2.simulatedIPAddress.equals(serverID)) {
-						l = null;
+				for (int i = 0; i < ports.length; i++) {
+					if (ports[i] != null && ports[i].router2.simulatedIPAddress.equals(serverID)) {
+						ports[i] = null;
 						break;
 					}
 				}
 			} 
 			catch (Exception e) {
-				e.printStackTrace();
+				//e.printStackTrace();
+				System.out.println("Could not connect to " + serverID);
 				// remove this neighbor from the list of ports
-				for (Link l : ports) {
-					if (l.router2.simulatedIPAddress.equals(serverID)) {
-						l = null;
+				for (int i = 0; i < ports.length; i++) {
+					if (ports[i] != null && ports[i].router2.simulatedIPAddress.equals(serverID)) {
+						ports[i] = null;
 						break;
 					}
 				}
@@ -381,10 +381,7 @@ public class Router {
 						ports[currIndex].router2.status = RouterStatus.TWO_WAY;
 						System.out.println("set " + ports[currIndex].router2.simulatedIPAddress + " state to TWO_WAY");
 					}
-					
-					
 				}
-				
 
 				System.out.print(">>");
 
