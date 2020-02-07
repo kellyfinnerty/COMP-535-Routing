@@ -378,9 +378,8 @@ public class Router {
 
 					SOSPFPacket secReceived = (SOSPFPacket) in.readObject();
 
-					//Check hello message
-					if (secReceived.sospfType == 0) {
-						//Check that received srcIP = neighbor.srcIP?
+					//Check hello message & from the same sourceIP as original
+					if (secReceived.sospfType == 0 && secReceived.srcIP.equals(receivedMsg.srcIP)) {
 						System.out.println("received HELLO from " + secReceived.srcIP);
 						
 						ports[currIndex].router2.status = RouterStatus.TWO_WAY;
