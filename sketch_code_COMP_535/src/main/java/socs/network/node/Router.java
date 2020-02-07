@@ -25,7 +25,7 @@ public class Router {
 
 	// assuming that all routers are with 4 ports
 	volatile Link[] ports = new Link[4];
-
+	boolean started = false;
 	MultiThreadedServer server;
 
 	public Router(Configuration config) {
@@ -73,8 +73,11 @@ public class Router {
 	private void processAttach(String processIP, short processPort, String simulatedIP, short weight) {
 		
 		if(rd.simulatedIPAddress.equals(simulatedIP)){
+			System.out.println("Cannot connect Router to itself");
 			return; 	//Don't want to attach to itself
 		}
+		
+		
 		
 		int openPort = -1;	//Check if there's an available neighbor port
 		boolean alreadyNeighbor = false;
@@ -111,8 +114,15 @@ public class Router {
 	 * broadcast Hello to neighbors
 	 */
 	private void processStart() {
-		LinkedList<HelloSocket> hellos = new LinkedList<HelloSocket>();
+		
+		if(started){
+			System.out.println("Start can only be run once");
+			return;
+		}
 
+		LinkedList<HelloSocket> hellos = new LinkedList<HelloSocket>();
+		started = true;
+		
 		for (Link l : ports) {
 			// If null or already initialized skip
 			if (l != null && l.router2.status != RouterStatus.TWO_WAY) {
