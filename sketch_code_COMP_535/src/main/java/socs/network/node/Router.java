@@ -19,12 +19,12 @@ import java.util.LinkedList;
 
 public class Router {
 
-	synchronized protected LinkStateDatabase lsd;
+	volatile protected LinkStateDatabase lsd;
 
-	synchronized RouterDescription rd = new RouterDescription();
+	volatile RouterDescription rd = new RouterDescription();
 
 	// assuming that all routers are with 4 ports
-	synchronized Link[] ports = new Link[4];
+	volatile Link[] ports = new Link[4];
 
 	MultiThreadedServer server;
 
@@ -120,7 +120,7 @@ public class Router {
 
 				// start the thread to send HELLO and handle corresponding response
 				HelloSocket sendHello = new HelloSocket(l, helloMsg);
-				l.rd2.status = RouterStatus.INIT;
+				l.router2.status = RouterStatus.INIT;
 				sendHello.start();
 				System.out.println("Returned from HelloSocket");
 			}
@@ -155,7 +155,7 @@ public class Router {
 	private void processNeighbors() {
 		int i = 1;
 		for (Link l : ports) {
-			if (l != null && l.rd2.status==RouterStatus.TWO_WAY) {
+			if (l != null && l.router2.status==RouterStatus.TWO_WAY) {
 				System.out.println("IP address of neighbor" + i + " " + l.router2.simulatedIPAddress);
 				i++;
 			}
