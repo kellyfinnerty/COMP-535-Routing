@@ -19,12 +19,12 @@ import java.util.LinkedList;
 
 public class Router {
 
-	protected LinkStateDatabase lsd;
+	volatile protected LinkStateDatabase lsd;
 
-	RouterDescription rd = new RouterDescription();
+	volatile RouterDescription rd = new RouterDescription();
 
 	// assuming that all routers are with 4 ports
-	Link[] ports = new Link[4];
+	volatile Link[] ports = new Link[4];
 
 	MultiThreadedServer server;
 
@@ -121,7 +121,9 @@ public class Router {
 
 				// start the thread to send HELLO and handle corresponding response
 				HelloSocket sendHello = new HelloSocket(l, helloMsg);
+				l.router2.status = RouterStatus.INIT;
 				sendHello.start();
+				System.out.println("Returned from HelloSocket");
 			}
 		}
 
@@ -155,7 +157,7 @@ public class Router {
 	private void processNeighbors() {
 		int i = 1;
 		for (Link l : ports) {
-			if (l != null) {
+			if (l != null && l.router2.status==RouterStatus.TWO_WAY) {
 				System.out.println("IP address of neighbor" + i + " " + l.router2.simulatedIPAddress);
 				i++;
 			}
@@ -190,6 +192,7 @@ public class Router {
 					processAttach(cmdLine[1], Short.parseShort(cmdLine[2]), cmdLine[3], Short.parseShort(cmdLine[4]));
 				} else if (command.equals("start")) {
 					processStart();
+					System.out.println("FINISHES STASRTTTTTTTTTTT");
 				} else if (command.equals("connect ")) {
 					String[] cmdLine = command.split(" ");
 					processConnect(cmdLine[1], Short.parseShort(cmdLine[2]), cmdLine[3], Short.parseShort(cmdLine[4]));
@@ -264,10 +267,26 @@ public class Router {
 			} 
 			catch (ClassNotFoundException exp) {
 				System.out.println("No valid response message received");
+				// remove this neighbor from the list of ports
+				for (Link l : ports) {
+					if (l.router2.simulatedIPAddress.equals(serverID)) {
+						l = null;
+						break;
+					}
+				}
 			} 
 			catch (Exception e) {
 				e.printStackTrace();
+				// remove this neighbor from the list of ports
+				for (Link l : ports) {
+					if (l.router2.simulatedIPAddress.equals(serverID)) {
+						l = null;
+						break;
+					}
+				}
 			}
+			System.out.println("HelloSocket finishes, prepare to exit");
+			return;
 		}
 	}
 
@@ -357,7 +376,9 @@ public class Router {
 			} 
 			catch (Exception e) {
 				e.printStackTrace();
+
 			}
+			return;
 
 		}
 	}
@@ -420,6 +441,7 @@ public class Router {
 				try {
 					ch = new ClientMsgHandler(serverSocket.accept());
 					ch.start();
+					System.out.println("client message handler FINISHES");
 				} catch (Exception e) {
 					System.out.println("Accept and client handler failed: " + port);
 					// System.exit(-1);
