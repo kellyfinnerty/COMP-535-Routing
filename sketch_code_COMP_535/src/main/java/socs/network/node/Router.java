@@ -65,7 +65,7 @@ public class Router {
 	/**
 	 * attach the link to the remote router, which is identified by the given
 	 * simulated ip; to establish the connection via socket, you need to
-	 * indentify the process IP and process Port; additionally, weight is the
+	 * identify the process IP and process Port; additionally, weight is the
 	 * cost to transmitting data through the link
 	 * <p/>
 	 * NOTE: this command should not trigger link database synchronization
@@ -73,13 +73,14 @@ public class Router {
 	private void processAttach(String processIP, short processPort, String simulatedIP, short weight) {
 		
 		if(rd.simulatedIPAddress.equals(simulatedIP)){
+			System.out.println("Error: Cannot attach Router to itself.");
 			return; 	//Don't want to attach to itself
 		}
 		
-		int openPort = -1;	//Check if there's an available neighbor port
+		int openPort = -1;	// Check if there's an available neighbor port
 		boolean alreadyNeighbor = false;
 
-		// find a non-occupied port and insert
+		// Find a non-occupied port and insert
 		for (int i = 0; i < 4; i++) {
 			if (ports[i] == null) {
 				openPort = i;
@@ -125,7 +126,8 @@ public class Router {
 		}
 
 	}
-
+	
+	
 	// a helper function to check whether there is a not occupied port
 	public Link notOccupiedPort() {
 		for (Link l : ports) {
@@ -237,8 +239,6 @@ public class Router {
 
 				ObjectOutputStream out = new ObjectOutputStream(client.getOutputStream());
 				out.writeObject(message);
-
-				System.out.println("HELLO message sent to " + serverID);
 
 				// get response and check if it is HELLO
 				ObjectInputStream in = new ObjectInputStream(client.getInputStream());
