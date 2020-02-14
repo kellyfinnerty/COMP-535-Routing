@@ -308,6 +308,11 @@ public class Router {
 
 	class ClientMsgHandler extends Thread {
 		public Socket server;
+		ObjectInputStream in = null;
+		ObjectOutputStream out = null;
+		
+		private int hello = 0;
+		private int lsupdate = 1;
 
 		public ClientMsgHandler(Socket serverS) {
 			server = serverS;
@@ -315,72 +320,20 @@ public class Router {
 
 		@Override
 		public void run() {
-			ObjectInputStream in = null;
-			ObjectOutputStream out = null;
 			
 			try {
 				in = new ObjectInputStream(server.getInputStream());
+				out = new ObjectOutputStream(server.getOutputStream());
 
 				// check the received message
 				SOSPFPacket receivedMsg = (SOSPFPacket) in.readObject();
 
 				// Hello message
-				if (receivedMsg.sospfType == 0) {
-					RouterDescription neighbor = null;
-					int availableIndex = -1;
-					int currIndex = -1;
-
-					// respond message
-					SOSPFPacket response = new SOSPFPacket();
-					response.sospfType = 0;
-					response.routerID = rd.simulatedIPAddress;
-					response.srcIP = rd.simulatedIPAddress;
-					response.srcProcessIP = rd.processIPAddress;
-					response.srcProcessPort = rd.processPortNumber;
-
-					for (int i = 0; i < ports.length; i++) {
-						if (ports[i] == null) {
-							availableIndex = i;
-						}
-						else if (ports[i].router2.simulatedIPAddress.equals(receivedMsg.srcIP)) {
-							neighbor = ports[i].router2;
-							currIndex = i;
-						}
-					}
-
-					// handle not finding neighbor & not having empty slots
-					if (neighbor == null && availableIndex == -1) {
-						System.out.println("No available neighbor slots");
-						in.close();
-						server.close();
-						return; // reject & exit
-					} 
-					else if (neighbor == null && availableIndex != -1) {
-						// add neighbor to ports list
-						neighbor = new RouterDescription(receivedMsg.srcProcessIP, receivedMsg.srcProcessPort,
-								receivedMsg.srcIP);
-						ports[availableIndex] = new Link(rd, neighbor);
-						currIndex = availableIndex;
-					}
-
-					System.out.println("received HELLO from " + ports[currIndex].router2.simulatedIPAddress);
-					ports[currIndex].router2.status = RouterStatus.INIT;
-					System.out.println("set " + ports[currIndex].router2.simulatedIPAddress + " state to INIT");
-
-					response.dstIP = receivedMsg.srcIP;
-
-					out = new ObjectOutputStream(server.getOutputStream());
-					out.writeObject(response);
-
-					SOSPFPacket secReceived = (SOSPFPacket) in.readObject();
-
-					//Check hello message & from the same sourceIP as original
-					if (secReceived.sospfType == 0 && secReceived.srcIP.equals(receivedMsg.srcIP)) {
-						System.out.println("received HELLO from " + secReceived.srcIP);
-						
-						ports[currIndex].router2.status = RouterStatus.TWO_WAY;
-						System.out.println("set " + ports[currIndex].router2.simulatedIPAddress + " state to TWO_WAY");
-					}
+				if (receivedMsg.sospfType == hello) {
+					HelloMessage(receivedMsg);
+				}
+				else if (receivedMsg.sospfType == lsupdate){
+					// handle lsupdate
 				}
 
 				System.out.print(">>");
@@ -398,12 +351,75 @@ public class Router {
 					in.close();
 					server.close();
 					out.close();
-				} catch(Exception e){
+				} 
+				catch(Exception e){
 					System.out.println("Could not close server or I/O stream");
 				}
 			}
 
 		}
+		
+		private void HelloMessage(SOSPFPacket receivedMsg){
+			RouterDescription neighbor = null;
+			int availableIndex = -1;
+			int currIndex = -1;
+
+			// respond message
+			SOSPFPacket response = new SOSPFPacket();
+			response.sospfType = 0;
+			response.routerID = rd.simulatedIPAddress;
+			response.srcIP = rd.simulatedIPAddress;
+			response.srcProcessIP = rd.processIPAddress;
+			response.srcProcessPort = rd.processPortNumber;
+
+			for (int i = 0; i < ports.length; i++) {
+				if (ports[i] == null) {
+					availableIndex = i;
+				}
+				else if (ports[i].router2.simulatedIPAddress.equals(receivedMsg.srcIP)) {
+					neighbor = ports[i].router2;
+					currIndex = i;
+				}
+			}
+
+			// handle not finding neighbor & not having empty slots
+			if (neighbor == null && availableIndex == -1) {
+				System.out.println("No available neighbor slots");
+				return; // reject & exit, close will happen in finally
+			} 
+			else if (neighbor == null && availableIndex != -1) {
+				// add neighbor to ports list
+				neighbor = new RouterDescription(receivedMsg.srcProcessIP, receivedMsg.srcProcessPort,
+						receivedMsg.srcIP);
+				ports[availableIndex] = new Link(rd, neighbor);
+				currIndex = availableIndex;
+			}
+
+			System.out.println("received HELLO from " + ports[currIndex].router2.simulatedIPAddress);
+			ports[currIndex].router2.status = RouterStatus.INIT;
+			System.out.println("set " + ports[currIndex].router2.simulatedIPAddress + " state to INIT");
+
+			response.dstIP = receivedMsg.srcIP;
+
+			SOSPFPacket secReceived;
+			
+			try {
+				out.writeObject(response);
+				secReceived = (SOSPFPacket) in.readObject();
+			} catch (Exception e){
+				System.out.println("Either couldn't send or recieve message");
+				return;
+			}
+
+			//Check hello message & from the same sourceIP as original
+			if (secReceived.sospfType == 0 && secReceived.srcIP.equals(receivedMsg.srcIP)) {
+				System.out.println("received HELLO from " + secReceived.srcIP);
+				
+				ports[currIndex].router2.status = RouterStatus.TWO_WAY;
+				System.out.println("set " + ports[currIndex].router2.simulatedIPAddress + " state to TWO_WAY");
+			}
+		}
+	
 	}
 	
 
