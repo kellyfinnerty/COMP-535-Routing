@@ -91,11 +91,11 @@ public class Router {
 		// Make sure there is an open neighbor spot and it's not already a neighbor
 		if (openPort != -1 && !alreadyNeighbor) {
 			RouterDescription rd2 = new RouterDescription(processIP, processPort, simulatedIP);
-			ports[openPort] = new Link(rd, rd2);
+			ports[openPort] = new Link(rd, rd2, weight);
 			
-			LSA current = lsd._store.get(rd.simulatedIPAddress);	// update the link weight in LSA
-			LinkDescription newLink = new LinkDescription(simulatedIP, processPort, weight);
-			current.links.add(newLink);	
+//			LSA current = lsd._store.get(rd.simulatedIPAddress);	// update the link weight in LSA
+//			LinkDescription newLink = new LinkDescription(simulatedIP, processPort, weight);
+//			current.links.add(newLink);	
 		} 
 		else if(alreadyNeighbor){
 			System.out.println("Unable to attach. Already neighbor.");
@@ -141,6 +141,16 @@ public class Router {
 			System.out.println("Failed to wait for all threads sending HELLO");
 	  	}
 
+		LSA current = lsd._store.get(rd.simulatedIPAddress);	// update the link weight in LSA
+		// add links with connected neighbor to LSA
+		for (Link l:ports) {
+			if (l != null && l.router2.status==RouterStatus.TWO_WAY) {
+				LinkDescription newLink = new LinkDescription(l.router2.simulatedIPAddress, 
+						l.router2.processPortNumber, l.weight);
+				current.links.add(newLink);	
+			}
+		}
+		// then send LSAUpdate?
 		
 
 	}
