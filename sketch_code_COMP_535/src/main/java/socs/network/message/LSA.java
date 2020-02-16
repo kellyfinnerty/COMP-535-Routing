@@ -1,4 +1,4 @@
- package socs.network.message;
+package socs.network.message;
 
 import java.io.Serializable;
 import java.util.LinkedList;
