@@ -395,6 +395,26 @@ public class Router {
 						break;
 					}
 				}*/
+				// remove from ports
+				for (int i = 0; i < ports.length; i++) {
+					if (ports[i] != null && ports[i].router2.simulatedIPAddress.equals(rd2.simulatedIPAddress)) {
+						ports[i] = null;
+					}
+				}
+
+				// remove rd2 from LSA of this router 
+				int removeIndex = -1;
+				for (LinkDescrption d : lsd._store.get(rd.simulatedIPAddress).links) {
+					if (d.linkID.equals(rd.simulatedIPAddress)) {
+						removeIndex = lsd._store.get(rd.simulatedIPAddress).links.indexOf(d);
+					}
+				}
+				if (removeIndex>-1) lsd._store.get(rd.simulatedIPAddress).links.remove(removeIndex);
+
+				// remove the LSA of rd2 from lsd
+				if (lsd._store.gets(rd2)!=null) lsd._store.remove(rd2);
+
+
 			}
 			finally {
 				try{
@@ -524,9 +544,22 @@ public class Router {
 		}
 	
 		
+
+		
 		private void lsaupdateMessage(SOSPFPacket msg){
 			
 			for(LSA curr : msg.lsaArray){
+								
+				// if LSA is NOT in database, add it
+				if(lsd._store.get(curr.linkStateID) == null){
+					lsd._store.put(curr.linkStateID, curr);						
+				}
+				else{
+					// if curr's sequence number > the currently stored one, update the lsa
+					if(lsd._store.get(curr.linkStateID).lsaSeqNumber < curr.lsaSeqNumber){
+						lsd._store.replace(curr.linkStateID, lsd._store.get(curr.linkStateID), curr);			
+					}
+				}
 				
 				boolean isNeighbor = false;
 				
@@ -538,45 +571,52 @@ public class Router {
 					}
 				}
 				
-				if(!isNeighbor) continue;	//if not a neighbor, skip adding lsa
-				
-				// if LSA is NOT in database, add it
-				if(lsd._store.get(curr.linkStateID) == null){
-					lsd._store.put(curr.linkStateID, curr);
+				//add weight if not already stored in link
+				if(isNeighbor){
+					boolean alreadyAdded = false;
 					
-					//add weight if not already stored in link
 					for(LinkDescription ld : lsd._store.get(rd.simulatedIPAddress).links){
+						//if LinkDescription already in LSA links
 						if(ld.linkID.equals(curr.linkStateID)){
-							int weight = Integer.MIN_VALUE;
+							alreadyAdded = true;
 							
+							//Loop through to find weight in the neighbor's links
 							for(LinkDescription currLink : curr.links){
 								if(currLink.linkID.equals(rd.simulatedIPAddress)){
-									weight = (int)currLink.tosMetrics;
+									ld.tosMetrics = (int)currLink.tosMetrics;
+									break;
 								}
 							}
-							
-							//check weight set to value
-							//Not sure what to do if not found... assume it will be?
-							if(weight > Integer.MIN_VALUE){
-								ld.tosMetrics = weight;	
-							}				
+										
 						}
 					}
 					
+					//(Possibly) finally getting the weight after receiving as a server
+					//Now we will add them as a neighbor in our LSA
+					if(!alreadyAdded){
+						int portNum = 0;
+						int currWeight = 0;
+						
+						for(LinkDescription l : curr.links){
+							if(l.linkID.equals(curr.linkStateID)){
+								portNum = l.portNum;
+								currWeight = l.tosMetrics;
+							}
+						}
+						
+						LinkDescription newLink = new LinkDescription(curr.linkStateID, portNum, currWeight);
+						lsd._store.get(rd.simulatedIPAddress).links.add(newLink);
+					}
+					
 					
 				}
-				else{
-					// if curr's sequence number > the currently stored one, update the lsa
-					if(lsd._store.get(curr.linkStateID).lsaSeqNumber < curr.lsaSeqNumber){
-						lsd._store.replace(curr.linkStateID, lsd._store.get(curr.linkStateID), curr);
-						
-						//check if weight for the link has been stored already
-						
-					}
-				}
+				
 			}
 			
 		}
+
+			
+		
 		
 	}
 	
