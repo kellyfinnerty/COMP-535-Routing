@@ -442,6 +442,26 @@ public class Router {
 						break;
 					}
 				}*/
+				// remove from ports
+				for (int i = 0; i < ports.length; i++) {
+					if (ports[i] != null && ports[i].router2.simulatedIPAddress.equals(rd2.simulatedIPAddress)) {
+						ports[i] = null;
+					}
+				}
+
+				// remove rd2 from LSA of this router 
+				int removeIndex = -1;
+				for (LinkDescrption d : lsd._store.get(rd.simulatedIPAddress).links) {
+					if (d.linkID.equals(rd.simulatedIPAddress)) {
+						removeIndex = lsd._store.get(rd.simulatedIPAddress).links.indexOf(d);
+					}
+				}
+				if (removeIndex>-1) lsd._store.get(rd.simulatedIPAddress).links.remove(removeIndex);
+
+				// remove the LSA of rd2 from lsd
+				if (lsd._store.gets(rd2)!=null) lsd._store.remove(rd2);
+
+
 			}
 			finally {
 				try{
@@ -579,6 +599,8 @@ public class Router {
 		}
 	
 		
+
+		
 		private void lsaupdateMessage(SOSPFPacket msg){
 			
 			for(LSA curr : msg.lsaArray){
@@ -647,6 +669,9 @@ public class Router {
 			}
 			
 		}
+
+			
+		
 		
 	}
 	
