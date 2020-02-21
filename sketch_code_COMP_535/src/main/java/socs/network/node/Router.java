@@ -15,11 +15,16 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.LinkedList;
 import java.util.Vector;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class Router {
+	
+	final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+	final Lock readLock = lock.readLock();
+	final Lock writeLock = lock.writeLock();
 
 	volatile protected LinkStateDatabase lsd;
-
 	volatile RouterDescription rd = new RouterDescription();
 
 	// assuming that all routers are with 4 ports
@@ -71,40 +76,48 @@ public class Router {
 	 */
 	private void processAttach(String processIP, short processPort, String simulatedIP, short weight) {
 		
-		if(rd.simulatedIPAddress.equals(simulatedIP)){
-			System.out.println("Cannot connect Router to itself");
-			return; 	//Don't want to attach to itself
-		}
+		// acquire lock
+		writeLock.lock();
 		
-		int openPort = -1;	//Check if there's an available neighbor port
-		boolean alreadyNeighbor = false;
-
-		// find a non-occupied port and insert
-		for (int i = 0; i < 4; i++) {
-			if (ports[i] == null) {
-				openPort = i;
+		try{
+			if(rd.simulatedIPAddress.equals(simulatedIP)){
+				System.out.println("Cannot connect Router to itself");
+				return; 	//Don't want to attach to itself
 			}
-			else if(ports[i].router2.simulatedIPAddress.equals(simulatedIP)){
-				alreadyNeighbor = true;
-			}
-		}
-
-		// Make sure there is an open neighbor spot and it's not already a neighbor
-		if (openPort != -1 && !alreadyNeighbor) {
-			RouterDescription rd2 = new RouterDescription(processIP, processPort, simulatedIP);
-			ports[openPort] = new Link(rd, rd2, weight);
 			
-//			LSA current = lsd._store.get(rd.simulatedIPAddress);	// update the link weight in LSA
-//			LinkDescription newLink = new LinkDescription(simulatedIP, processPort, weight);
-//			current.links.add(newLink);	
-		} 
-		else if(alreadyNeighbor){
-			System.out.println("Unable to attach. Already neighbor.");
+			int openPort = -1;	//Check if there's an available neighbor port
+			boolean alreadyNeighbor = false;
+	
+			// find a non-occupied port and insert
+			for (int i = 0; i < 4; i++) {
+				if (ports[i] == null) {
+					openPort = i;
+				}
+				else if(ports[i].router2.simulatedIPAddress.equals(simulatedIP)){
+					alreadyNeighbor = true;
+				}
+			}
+	
+			// Make sure there is an open neighbor spot and it's not already a neighbor
+			if (openPort != -1 && !alreadyNeighbor) {
+				RouterDescription rd2 = new RouterDescription(processIP, processPort, simulatedIP);
+				ports[openPort] = new Link(rd, rd2, weight);
+				
+	//			LSA current = lsd._store.get(rd.simulatedIPAddress);	// update the link weight in LSA
+	//			LinkDescription newLink = new LinkDescription(simulatedIP, processPort, weight);
+	//			current.links.add(newLink);	
+			} 
+			else if(alreadyNeighbor){
+				System.out.println("Unable to attach. Already neighbor.");
+			}
+			else {
+				System.out.println("Unable to attach. All ports are occupied.");
+			}
 		}
-		else {
-			System.out.println("Unable to attach. All ports are occupied.");
+		finally{
+			// release lock
+			writeLock.unlock();
 		}
-
 	}
 
 	/**
@@ -123,11 +136,20 @@ public class Router {
 		startHellos();
 
 		// add links with connected neighbor to LSA
-		for (Link l:ports) {
-			if (l != null && l.router2.status == RouterStatus.TWO_WAY) {
-				LinkDescription newLink = new LinkDescription(l.router2.simulatedIPAddress, l.router2.processPortNumber, l.weight);
-				lsd._store.get(rd.simulatedIPAddress).links.add(newLink);	
+		// start LOCK
+		writeLock.lock();
+		
+		try{
+			for (Link l:ports) {
+				if (l != null && l.router2.status == RouterStatus.TWO_WAY) {
+					LinkDescription newLink = new LinkDescription(l.router2.simulatedIPAddress, l.router2.processPortNumber, l.weight);
+					lsd._store.get(rd.simulatedIPAddress).links.add(newLink);	
+				}
 			}
+		}
+		// end LOCK
+		finally{
+			writeLock.unlock();
 		}
 		
 		// helper method to send out LSAUPDATE to connected neighbors
@@ -140,20 +162,31 @@ public class Router {
 	private void startHellos(){
 		LinkedList<HelloSocket> hellos = new LinkedList<HelloSocket>();
 		
-		for (int i = 0; i < ports.length; i++) {
-			// If null or already initialized skip
-			if (ports[i] != null && ports[i].router2.status != RouterStatus.TWO_WAY) {
-				SOSPFPacket helloMsg = new SOSPFPacket((short) 0, rd.simulatedIPAddress, ports[i].router2.simulatedIPAddress,
-						rd.simulatedIPAddress, ports[i].router2.simulatedIPAddress, rd.processIPAddress, rd.processPortNumber);
-
-				// start the thread to send HELLO and handle corresponding response
-				HelloSocket sendHello = new HelloSocket(ports[i], helloMsg);
-				ports[i].router2.status = RouterStatus.INIT;
-				sendHello.start();
-				hellos.add(sendHello);
+		// question: start after releasing lock?
+		// start LOCK
+		writeLock.lock();
+		
+		try{
+			for (int i = 0; i < ports.length; i++) {
+				// If null or already initialized skip
+				if (ports[i] != null && ports[i].router2.status != RouterStatus.TWO_WAY) {
+					SOSPFPacket helloMsg = new SOSPFPacket((short) 0, rd.simulatedIPAddress, ports[i].router2.simulatedIPAddress,
+							rd.simulatedIPAddress, ports[i].router2.simulatedIPAddress, rd.processIPAddress, rd.processPortNumber);
+	
+					// start the thread to send HELLO and handle corresponding response
+					HelloSocket sendHello = new HelloSocket(ports[i], helloMsg);
+					ports[i].router2.status = RouterStatus.INIT;
+					sendHello.start();
+					hellos.add(sendHello);
+				}
 			}
 		}
-
+		//end LOCK
+		finally{
+			writeLock.unlock();
+		}
+		
+		
 		try {
 			for (HelloSocket h: hellos){
 				h.join();
@@ -165,30 +198,38 @@ public class Router {
 	
 	
 	private void startLSAUpdates(){
-		// then send LSAUpdate
 		LinkedList<LSAUpdateSocket> lsaupdates = new LinkedList<LSAUpdateSocket>();
-		short lsaupdatemsg = 1;
-
-		for (int i = 0; i < ports.length; i++) {
-			// If null or already initialized skip
-			if (ports[i] != null && ports[i].router2.status == RouterStatus.TWO_WAY) {
-				SOSPFPacket updateMsg = new SOSPFPacket(lsaupdatemsg, rd.simulatedIPAddress, ports[i].router2.simulatedIPAddress,
-						rd.simulatedIPAddress, ports[i].router2.simulatedIPAddress, rd.processIPAddress, rd.processPortNumber);
-				lsd._store.get(rd.simulatedIPAddress).lsaSeqNumber++;	//increment curr router's lsa seq number
-
+		
+		writeLock.lock();
+		
+		try{
+			// then send LSAUpdate
+			short lsaupdatemsg = 1;
+	
+			//
+			for (int i = 0; i < ports.length; i++) {
+				// If null or already initialized skip
+				if (ports[i] != null && ports[i].router2.status == RouterStatus.TWO_WAY) {
+					SOSPFPacket updateMsg = new SOSPFPacket(lsaupdatemsg, rd.simulatedIPAddress, ports[i].router2.simulatedIPAddress,
+							rd.simulatedIPAddress, ports[i].router2.simulatedIPAddress, rd.processIPAddress, rd.processPortNumber);
+					lsd._store.get(rd.simulatedIPAddress).lsaSeqNumber++;	//increment curr router's lsa seq number
+	
+					updateMsg.lsaArray = new Vector<LSA>();
+					updateMsg.lsaArray.add(lsd._store.get(rd.simulatedIPAddress));	//add curr router's lsa
 				
-				updateMsg.lsaArray = new Vector<LSA>();
-				updateMsg.lsaArray.add(lsd._store.get(rd.simulatedIPAddress));	//add curr router's lsa
-				
-
-				// start the thread to send LSAUPDATE and handle corresponding response
-				LSAUpdateSocket sendUpdate = new LSAUpdateSocket(ports[i], updateMsg);
-
-				sendUpdate.start();
-				lsaupdates.add(sendUpdate);
+					// start the thread to send LSAUPDATE and handle corresponding response
+					LSAUpdateSocket sendUpdate = new LSAUpdateSocket(ports[i], updateMsg);
+	
+					sendUpdate.start();
+					lsaupdates.add(sendUpdate);
+				}
 			}
 		}
+		finally{
+			writeLock.unlock();
+		}
 
+		
 		try {
 			for (LSAUpdateSocket h: lsaupdates){
 				h.join();
@@ -224,12 +265,18 @@ public class Router {
 	 * output the neighbors of the routers
 	 */
 	private void processNeighbors() {
-		int i = 1;
-		for (Link l : ports) {
-			if (l != null && l.router2.status==RouterStatus.TWO_WAY) {
-				System.out.println("IP address of neighbor" + i + " " + l.router2.simulatedIPAddress);
-				i++;
+		readLock.lock();
+		
+		try{
+			int i = 1;
+			for (Link l : ports) {
+				if (l != null && l.router2.status==RouterStatus.TWO_WAY) {
+					System.out.println("IP address of neighbor" + i + " " + l.router2.simulatedIPAddress);
+					i++;
+				}
 			}
+		} finally {
+			readLock.unlock();
 		}
 
 	}
@@ -430,13 +477,21 @@ public class Router {
 				// check the received message
 				SOSPFPacket receivedMsg = (SOSPFPacket) in.readObject();
 
-				// Hello message
-				if (receivedMsg.sospfType == hello) {
-					helloMessage(receivedMsg);
-				}
-				else if (receivedMsg.sospfType == lsaupdate){
-					// handle lsaupdate
-					lsaupdateMessage(receivedMsg);
+				
+				writeLock.lock();
+				
+				try{
+					// Hello message
+					if (receivedMsg.sospfType == hello) {
+						helloMessage(receivedMsg);
+					}
+					else if (receivedMsg.sospfType == lsaupdate){
+						// handle lsaupdate
+						
+						lsaupdateMessage(receivedMsg);
+					}
+				} finally {
+					writeLock.unlock();
 				}
 
 				System.out.print(">>");
@@ -527,6 +582,17 @@ public class Router {
 		private void lsaupdateMessage(SOSPFPacket msg){
 			
 			for(LSA curr : msg.lsaArray){
+								
+				// if LSA is NOT in database, add it
+				if(lsd._store.get(curr.linkStateID) == null){
+					lsd._store.put(curr.linkStateID, curr);						
+				}
+				else{
+					// if curr's sequence number > the currently stored one, update the lsa
+					if(lsd._store.get(curr.linkStateID).lsaSeqNumber < curr.lsaSeqNumber){
+						lsd._store.replace(curr.linkStateID, lsd._store.get(curr.linkStateID), curr);			
+					}
+				}
 				
 				boolean isNeighbor = false;
 				
@@ -538,42 +604,46 @@ public class Router {
 					}
 				}
 				
-				if(!isNeighbor) continue;	//if not a neighbor, skip adding lsa
-				
-				// if LSA is NOT in database, add it
-				if(lsd._store.get(curr.linkStateID) == null){
-					lsd._store.put(curr.linkStateID, curr);
+				//add weight if not already stored in link
+				if(isNeighbor){
+					boolean alreadyAdded = false;
 					
-					//add weight if not already stored in link
 					for(LinkDescription ld : lsd._store.get(rd.simulatedIPAddress).links){
+						//if LinkDescription already in LSA links
 						if(ld.linkID.equals(curr.linkStateID)){
-							int weight = Integer.MIN_VALUE;
+							alreadyAdded = true;
 							
+							//Loop through to find weight in the neighbor's links
 							for(LinkDescription currLink : curr.links){
 								if(currLink.linkID.equals(rd.simulatedIPAddress)){
-									weight = (int)currLink.tosMetrics;
+									ld.tosMetrics = (int)currLink.tosMetrics;
+									break;
 								}
 							}
-							
-							//check weight set to value
-							//Not sure what to do if not found... assume it will be?
-							if(weight > Integer.MIN_VALUE){
-								ld.tosMetrics = weight;	
-							}				
+										
 						}
 					}
 					
+					//(Possibly) finally getting the weight after receiving as a server
+					//Now we will add them as a neighbor in our LSA
+					if(!alreadyAdded){
+						int portNum = 0;
+						int currWeight = 0;
+						
+						for(LinkDescription l : curr.links){
+							if(l.linkID.equals(curr.linkStateID)){
+								portNum = l.portNum;
+								currWeight = l.tosMetrics;
+							}
+						}
+						
+						LinkDescription newLink = new LinkDescription(curr.linkStateID, portNum, currWeight);
+						lsd._store.get(rd.simulatedIPAddress).links.add(newLink);
+					}
+					
 					
 				}
-				else{
-					// if curr's sequence number > the currently stored one, update the lsa
-					if(lsd._store.get(curr.linkStateID).lsaSeqNumber < curr.lsaSeqNumber){
-						lsd._store.replace(curr.linkStateID, lsd._store.get(curr.linkStateID), curr);
-						
-						//check if weight for the link has been stored already
-						
-					}
-				}
+				
 			}
 			
 		}
