@@ -52,7 +52,7 @@ public class Router {
 	 *            the ip address of the destination simulated router
 	 */
 	private void processDetect(String destinationIP) {
-
+		lsd.getShortestPath(destinationIP);
 	}
 
 	/**
@@ -455,7 +455,7 @@ public class Router {
 
 				// remove rd2 from LSA of this router 
 				int removeIndex = -1;
-				for (LinkDescrption d : lsd._store.get(rd.simulatedIPAddress).links) {
+				for (LinkDescription d : lsd._store.get(rd.simulatedIPAddress).links) {
 					if (d.linkID.equals(rd.simulatedIPAddress)) {
 						removeIndex = lsd._store.get(rd.simulatedIPAddress).links.indexOf(d);
 					}
@@ -463,7 +463,7 @@ public class Router {
 				if (removeIndex>-1) lsd._store.get(rd.simulatedIPAddress).links.remove(removeIndex);
 
 				// remove the LSA of rd2 from lsd
-				if (lsd._store.gets(rd2)!=null) lsd._store.remove(rd2);
+				if (lsd._store.get(rd2)!=null) lsd._store.remove(rd2);
 
 
 			}
