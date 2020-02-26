@@ -26,6 +26,8 @@ public class SOSPFPacket implements Serializable {
   							//used by LSAUPDATE to check who has already received the LSUPDATE
   
 
+  public boolean originalTrigger;
+  
   //used by LSAUPDATE
   public Vector<LSA> lsaArray = null;
   
