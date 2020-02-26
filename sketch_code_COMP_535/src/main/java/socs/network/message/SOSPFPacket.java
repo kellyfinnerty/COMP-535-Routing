@@ -21,7 +21,10 @@ public class SOSPFPacket implements Serializable {
   //used by HELLO message to identify the sender of the message
   //e.g. when router A sends HELLO to its neighbor, it has to fill this field with its own
   //simulated IP address
+  
   public String neighborID; //neighbor's simulated IP address
+  							//used by LSAUPDATE to check who has already received the LSUPDATE
+  
 
   //used by LSAUPDATE
   public Vector<LSA> lsaArray = null;
