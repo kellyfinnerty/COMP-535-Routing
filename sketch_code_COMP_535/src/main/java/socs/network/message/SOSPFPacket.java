@@ -31,9 +31,7 @@ public class SOSPFPacket implements Serializable {
   //used by LSAUPDATE
   public Vector<LSA> lsaArray = null;
   
-  public SOSPFPacket(){
-	  
-  }
+  public SOSPFPacket(){ }
 
   public SOSPFPacket(short sospfType, String routerID, String neighborID, String srcIP, String dstIP, 
 		  String srcProcessIP, short srcProcessPort){
@@ -47,6 +45,16 @@ public class SOSPFPacket implements Serializable {
 	  
 	  this.srcProcessIP = srcProcessIP;
 	  this.srcProcessPort = srcProcessPort;
+  }
+  
+  public String toString(){
+	  /*System.out.println("");
+	  System.out.println("srcIP " + srcIP );
+	  System.out.println("routerID " + routerID);
+	  System.out.println("orig Trigger " + originalTrigger);
+	  System.out.println("");*/
+	  
+	  return "\nsrcIP "+ srcIP + "\nrouterID " + routerID + "\norig Trigger " + originalTrigger + "\n";
   }
   
 }

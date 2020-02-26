@@ -48,15 +48,17 @@ public class LinkStateDatabase {
 //		System.out.println("checking "+tocheck);
 		current = _store.get(tocheck);
 		
-		for (LinkDescription ld: current.links) {
-			if (!nodes.containsKey(ld.linkID)) {
-				nodes.put(ld.linkID, new NodeInfo(nodes.get(tocheck).distance+ld.tosMetrics, tocheck));
-				unvisited.add(ld.linkID);
+		if(current != null){
+			for (LinkDescription ld: current.links) {
+				if (!nodes.containsKey(ld.linkID)) {
+					nodes.put(ld.linkID, new NodeInfo(nodes.get(tocheck).distance+ld.tosMetrics, tocheck));
+					unvisited.add(ld.linkID);
+				}
+				else if (nodes.get(ld.linkID).distance>nodes.get(tocheck).distance+ld.tosMetrics) 
+					nodes.replace(ld.linkID, new NodeInfo(nodes.get(tocheck).distance+ld.tosMetrics,tocheck));
 			}
-			else if (nodes.get(ld.linkID).distance>nodes.get(tocheck).distance+ld.tosMetrics) 
-				nodes.replace(ld.linkID, new NodeInfo(nodes.get(tocheck).distance+ld.tosMetrics,tocheck));
-		
 		}
+		
 		
 		checked.add(tocheck);
 		

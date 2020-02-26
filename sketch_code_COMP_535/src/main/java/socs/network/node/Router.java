@@ -20,9 +20,9 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class Router {
 	
-	final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
-	final Lock readLock = lock.readLock();
-	final Lock writeLock = lock.writeLock();
+	//final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+	//final Lock readLock = lock.readLock();
+	//final Lock writeLock = lock.writeLock();
 
 	volatile protected LinkStateDatabase lsd;
 	volatile RouterDescription rd = new RouterDescription();
@@ -52,7 +52,7 @@ public class Router {
 	 *            the ip address of the destination simulated router
 	 */
 	private void processDetect(String destinationIP) {
-		lsd.getShortestPath(destinationIP);
+		System.out.println(lsd.getShortestPath(destinationIP));
 	}
 
 	/**
@@ -77,7 +77,7 @@ public class Router {
 	private void processAttach(String processIP, short processPort, String simulatedIP, short weight) {
 		
 		// acquire lock
-		writeLock.lock();
+		//writeLock.lock();
 		
 		try{
 			if(rd.simulatedIPAddress.equals(simulatedIP)){
@@ -116,7 +116,7 @@ public class Router {
 		}
 		finally{
 			// release lock
-			writeLock.unlock();
+			//writeLock.unlock();
 		}
 	}
 
@@ -137,7 +137,7 @@ public class Router {
 
 		// add links with connected neighbor to LSA
 		// start LOCK
-		writeLock.lock();
+		//writeLock.lock();
 		
 		try{
 			for (Link l:ports) {
@@ -149,7 +149,7 @@ public class Router {
 		}
 		// end LOCK
 		finally{
-			writeLock.unlock();
+			//writeLock.unlock();
 		}
 		
 		// helper method to send out LSAUPDATE to connected neighbors
@@ -165,13 +165,13 @@ public class Router {
 		
 		// question: start after releasing lock?
 		// start LOCK
-		writeLock.lock();
+		//writeLock.lock();
 		
 		try{
 			for (int i = 0; i < ports.length; i++) {
 				// If null or already initialized skip
 				if (ports[i] != null && ports[i].router2.status != RouterStatus.TWO_WAY) {
-					 helloMsg = new SOSPFPacket((short) 0, rd.simulatedIPAddress, ports[i].router2.simulatedIPAddress,
+					 SOSPFPacket helloMsg = new SOSPFPacket((short) 0, rd.simulatedIPAddress, ports[i].router2.simulatedIPAddress,
 							rd.simulatedIPAddress, ports[i].router2.simulatedIPAddress, rd.processIPAddress, rd.processPortNumber);
 	
 					// start the thread to send HELLO and handle corresponding response
@@ -184,7 +184,7 @@ public class Router {
 		}
 		//end LOCK
 		finally{
-			writeLock.unlock();
+			//writeLock.unlock();
 		}
 		
 		
@@ -200,8 +200,11 @@ public class Router {
 	//boolean trigger represents if it was the original trigger for LSA update
 	private void startLSAUpdates(boolean trigger){
 		LinkedList<LSAUpdateSocket> lsaupdates = new LinkedList<LSAUpdateSocket>();
-		
-		writeLock.lock();
+		if(!trigger) { 
+			System.out.println("startLSAUpdates FALSE trigger"); 
+			System.out.println("Ports " + ports[0] + ports[1] + ports[2] + ports[3]);
+		}
+		//writeLock.lock();
 		
 		try{
 			// then send LSAUpdate
@@ -221,6 +224,7 @@ public class Router {
 			for (int i = 0; i < ports.length; i++) {
 				// If null or already initialized skip
 				if (ports[i] != null && ports[i].router2.status == RouterStatus.TWO_WAY) {
+					System.out.println("dont forward to " + dontForwardTo);
 					SOSPFPacket updateMsg = new SOSPFPacket(lsaupdatemsg, dontForwardTo, dontForwardTo,
 							rd.simulatedIPAddress, ports[i].router2.simulatedIPAddress, rd.processIPAddress, rd.processPortNumber);
 					updateMsg.originalTrigger = trigger;
@@ -236,7 +240,7 @@ public class Router {
 			}
 		}
 		finally{
-			writeLock.unlock();
+			//writeLock.unlock();
 		}
 
 		
@@ -275,7 +279,7 @@ public class Router {
 	 * output the neighbors of the routers
 	 */
 	private void processNeighbors() {
-		readLock.lock();
+		//readLock.lock();
 		
 		try{
 			int i = 1;
@@ -286,7 +290,7 @@ public class Router {
 				}
 			}
 		} finally {
-			readLock.unlock();
+			//readLock.unlock();
 		}
 
 	}
@@ -324,6 +328,8 @@ public class Router {
 				} else if (command.equals("neighbors")) {
 					// output neighbors
 					processNeighbors();
+				} else if (command.equals("lsd")){
+					System.out.println(lsd.toString());
 				} else {
 					// invalid command
 					break;
@@ -436,6 +442,7 @@ public class Router {
 			RouterDescription rd2 = link.router2;
 			
 			try {				
+				System.out.println("try to send to " + rd2.simulatedIPAddress + " on " + rd2.processPortNumber);
 				client = new Socket(rd2.processIPAddress, rd2.processPortNumber);
 
 				out = new ObjectOutputStream(client.getOutputStream());
@@ -495,6 +502,8 @@ public class Router {
 		public void run() {
 			
 			try {
+				System.out.println("receive something");
+				
 				in = new ObjectInputStream(server.getInputStream());
 				out = new ObjectOutputStream(server.getOutputStream());
 
@@ -502,7 +511,7 @@ public class Router {
 				SOSPFPacket receivedMsg = (SOSPFPacket) in.readObject();
 
 				
-				writeLock.lock();
+				//writeLock.lock();
 				
 				try{
 					// Hello message
@@ -514,7 +523,7 @@ public class Router {
 						lsaupdateMessage(receivedMsg);
 					}
 				} finally {
-					writeLock.unlock();
+					//writeLock.unlock();
 				}
 
 				System.out.print(">>");
@@ -618,14 +627,20 @@ public class Router {
 				
 				//add weight if not already stored in link
 				if(isNeighbor(currMsgLSA)){
+					System.out.println("Update weight called");
 					updateNeighborWeight(currMsgLSA);
 				}	
 			}
+			
+			System.out.println("Forward " + forward);
 			
 			//if the LSA was new, we need to forward it
 			if(forward){
 				SOSPFPacket msgToSend = createForwardMsg(msg);
 				forwardLSAUpdate(msgToSend, msg.routerID);
+				
+				System.out.println(msgToSend.toString());
+				System.out.println("original trigger=" + msg.originalTrigger);
 				
 				//init our own LSA update when receiving the original trigger for lsaupdate
 				if(msg.originalTrigger){
@@ -684,7 +699,7 @@ public class Router {
 				}
 								
 			}
-			
+			newMsg.routerID = newDontForwardTo;
 			newMsg.neighborID = newDontForwardTo;
 			return newMsg;
 		}
@@ -794,6 +809,15 @@ public class Router {
 				}
 			}
 			
+		}
+		
+		public void close(){
+			try{
+				serverSocket.close();
+			}
+			catch(Exception e){
+				System.out.println("couldn't close server socket");
+			}
 		}
 
 		public void start() {
