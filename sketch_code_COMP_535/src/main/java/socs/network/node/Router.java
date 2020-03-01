@@ -35,8 +35,8 @@ public class Router {
 	public Router(Configuration config) {
 		rd.simulatedIPAddress = config.getString("socs.network.router.ip");
 		rd.processIPAddress = "127.1.1.0";
+		
 		rd.processPortNumber = Short.valueOf(config.getString("socs.network.router.port"));
-
 		lsd = new LinkStateDatabase(rd);
 
 		this.server = new MultiThreadedServer();
@@ -52,7 +52,9 @@ public class Router {
 	 *            the ip address of the destination simulated router
 	 */
 	private void processDetect(String destinationIP) {
-		System.out.println(lsd.getShortestPath(destinationIP));
+		String result = lsd.getShortestPath(destinationIP);
+		System.out.println(result);
+		System.out.print(">>");
 	}
 
 	/**
@@ -139,11 +141,26 @@ public class Router {
 		// start LOCK
 		//writeLock.lock();
 		
+		boolean changeofstate = false;	//check if a neighbor was actually added
+		
 		try{
+			//add if not already a link
 			for (Link l:ports) {
 				if (l != null && l.router2.status == RouterStatus.TWO_WAY) {
-					LinkDescription newLink = new LinkDescription(l.router2.simulatedIPAddress, l.router2.processPortNumber, l.weight);
-					lsd._store.get(rd.simulatedIPAddress).links.add(newLink);	
+					boolean newlink = true;
+					
+					//check if we've previously added it to links, if so, skip
+					for(LinkDescription ld : lsd._store.get(rd.simulatedIPAddress).links) {
+						 if(ld.linkID.equals(l.router2.simulatedIPAddress)) newlink = false;
+					}
+					
+					if(newlink){
+						System.out.println("Adding link " + l.router2.simulatedIPAddress + " " + l.router2.processPortNumber + " " + l.weight);
+						LinkDescription newLink = new LinkDescription(l.router2.simulatedIPAddress, l.router2.processPortNumber, l.weight);
+						lsd._store.get(rd.simulatedIPAddress).links.add(newLink);	
+						
+						changeofstate = true;
+					}
 				}
 			}
 		}
@@ -152,9 +169,14 @@ public class Router {
 			//writeLock.unlock();
 		}
 		
+		//System.out.println("change of state " + changeofstate);
+		
 		// helper method to send out LSAUPDATE to connected neighbors
-		//true because it's the original trigger for the lsaupdates
-		startLSAUpdates(true);
+		//only call if there was actually a change of state
+		if(changeofstate){
+			boolean originaltrigger = true;
+			startLSAUpdates(originaltrigger);
+		}
 
 	}
 
@@ -198,12 +220,8 @@ public class Router {
 	}
 	
 	//boolean trigger represents if it was the original trigger for LSA update
-	private void startLSAUpdates(boolean trigger){
+	private void startLSAUpdates(boolean istrigger){
 		LinkedList<LSAUpdateSocket> lsaupdates = new LinkedList<LSAUpdateSocket>();
-		if(!trigger) { 
-			System.out.println("startLSAUpdates FALSE trigger"); 
-			System.out.println("Ports " + ports[0] + ports[1] + ports[2] + ports[3]);
-		}
 		//writeLock.lock();
 		
 		try{
@@ -224,10 +242,10 @@ public class Router {
 			for (int i = 0; i < ports.length; i++) {
 				// If null or already initialized skip
 				if (ports[i] != null && ports[i].router2.status == RouterStatus.TWO_WAY) {
-					System.out.println("dont forward to " + dontForwardTo);
+					//System.out.println("startLSAUpdates: dont forward to " + dontForwardTo);
 					SOSPFPacket updateMsg = new SOSPFPacket(lsaupdatemsg, dontForwardTo, dontForwardTo,
 							rd.simulatedIPAddress, ports[i].router2.simulatedIPAddress, rd.processIPAddress, rd.processPortNumber);
-					updateMsg.originalTrigger = trigger;
+					updateMsg.originalTrigger = istrigger;
 					updateMsg.lsaArray = new Vector<LSA>();
 					updateMsg.lsaArray.add(lsd._store.get(rd.simulatedIPAddress));	//add curr router's lsa
 				
@@ -376,11 +394,11 @@ public class Router {
 				in = new ObjectInputStream(client.getInputStream());
 				SOSPFPacket response = (SOSPFPacket) in.readObject();
 
-				if (response.sospfType == 0) {
-					System.out.println("received HELLO from " + response.srcIP);
+				if (response.sospfType == 0 && response.srcIP.equals(serverID)) {
+					System.out.println("received HELLO from " + response.srcIP + " on " + response.srcProcessPort);
 
 					for (int i = 0; i < ports.length; i++) {
-						if (ports[i] != null && ports[i] != null && ports[i].router2.simulatedIPAddress.equals(serverID)) {
+						if (ports[i] != null && ports[i].router2.simulatedIPAddress.equals(serverID)) {
 							// set router2 status and send HELLO again
 							ports[i].router2.status = RouterStatus.TWO_WAY;
 							System.out.println("set " + ports[i].router2.simulatedIPAddress + " state to TWO_WAY");
@@ -416,6 +434,7 @@ public class Router {
 					out.close();
 					client.close();
 				} catch (Exception e){
+					e.printStackTrace();
 					System.out.println("Could not close server or I/O stream");
 				}
 			}
@@ -478,7 +497,9 @@ public class Router {
 				try{
 					out.close();
 					client.close();
+					System.out.println("Closed LSAUpdate client and out");
 				} catch (Exception e){
+					e.printStackTrace();
 					System.out.println("Could not close server or I/O stream");
 				}
 			}
@@ -491,8 +512,8 @@ public class Router {
 		ObjectInputStream in = null;
 		ObjectOutputStream out = null;
 		
-		private int hello = 0;
-		private int lsaupdate = 1;
+		final int hello = 0;
+		final int lsaupdate = 1;
 
 		public ClientMsgHandler(Socket serverS) {
 			server = serverS;
@@ -520,6 +541,7 @@ public class Router {
 					}
 					else if (receivedMsg.sospfType == lsaupdate){
 						// handle lsaupdate
+						System.out.println("HEYYYYYY I GOT A LSAUpdate time to handle it");
 						lsaupdateMessage(receivedMsg);
 					}
 				} finally {
@@ -543,6 +565,7 @@ public class Router {
 					out.close();
 				} 
 				catch(Exception e){
+					e.printStackTrace();
 					System.out.println("Could not close server or I/O stream");
 				}
 			}
@@ -607,10 +630,21 @@ public class Router {
 				
 				ports[currIndex].router2.status = RouterStatus.TWO_WAY;
 				System.out.println("set " + ports[currIndex].router2.simulatedIPAddress + " state to TWO_WAY");
+				
+				addLink(receivedMsg.srcIP, receivedMsg.srcProcessPort, ports[currIndex].weight);	//add this link in LSD of this router
 			}
+			
+			
 		}
 	
-		
+		private void addLink(String srcIP, short procPort, short weight){
+			LinkDescription newld = new LinkDescription();
+			newld.linkID = srcIP;
+			newld.portNum = procPort;
+			newld.tosMetrics = weight;
+			
+			lsd._store.get(rd.simulatedIPAddress).links.add(newld);
+		}
 
 		
 		private void lsaupdateMessage(SOSPFPacket msg){
@@ -627,28 +661,80 @@ public class Router {
 				
 				//add weight if not already stored in link
 				if(isNeighbor(currMsgLSA)){
-					System.out.println("Update weight called");
+					//System.out.println("Update weight called " + currMsgLSA.toString());
 					updateNeighborWeight(currMsgLSA);
 				}	
 			}
 			
-			System.out.println("Forward " + forward);
+			//System.out.println("Forward " + forward);
 			
 			//if the LSA was new, we need to forward it
 			if(forward){
 				SOSPFPacket msgToSend = createForwardMsg(msg);
 				forwardLSAUpdate(msgToSend, msg.routerID);
 				
-				System.out.println(msgToSend.toString());
-				System.out.println("original trigger=" + msg.originalTrigger);
+				//System.out.println(msgToSend.toString());
+				//System.out.println("original trigger=" + msg.originalTrigger);
 				
 				//init our own LSA update when receiving the original trigger for lsaupdate
 				if(msg.originalTrigger){
-					startLSAUpdates(false);	//false bc not original trigger but a response
+					startLSAUpdates();	//false bc not original trigger but a response
 				}
 			}
 			
 			
+		}
+		
+		private void startLSAUpdates(){
+			LinkedList<LSAUpdateSocket> lsaupdates = new LinkedList<LSAUpdateSocket>();
+
+			//System.out.println("startLSAUpdates");
+			
+			try{
+				// then send LSAUpdate
+				short lsaupdatemsg = 1;
+				String dontForwardTo = rd.simulatedIPAddress;
+				
+				//create string (routerID) that receivers shouldn't forward to including all 2way neighbors
+				for (int i = 0; i < ports.length; i++) {
+					if (ports[i] != null && ports[i].router2.status == RouterStatus.TWO_WAY) {
+						dontForwardTo += '&' + ports[i].router2.simulatedIPAddress;
+					}
+				}
+				
+				lsd._store.get(rd.simulatedIPAddress).lsaSeqNumber++;	//increment curr router's lsa seq number once
+		
+				//send out message
+				for (int i = 0; i < ports.length; i++) {
+					// If null or already initialized skip
+					if (ports[i] != null && ports[i].router2.status == RouterStatus.TWO_WAY) {
+						//System.out.println("dont forward to " + dontForwardTo);
+						SOSPFPacket updateMsg = new SOSPFPacket(lsaupdatemsg, dontForwardTo, dontForwardTo,
+								rd.simulatedIPAddress, ports[i].router2.simulatedIPAddress, rd.processIPAddress, rd.processPortNumber);
+						updateMsg.originalTrigger = false;
+						updateMsg.lsaArray = new Vector<LSA>();
+						updateMsg.lsaArray.add(lsd._store.get(rd.simulatedIPAddress));	//add curr router's lsa
+					
+						// start the thread to send LSAUPDATE and handle corresponding response
+						LSAUpdateSocket sendUpdate = new LSAUpdateSocket(ports[i], updateMsg);
+		
+						sendUpdate.start();
+						lsaupdates.add(sendUpdate);
+					}
+				}
+			}
+			finally{
+				//writeLock.unlock();
+			}
+
+			
+			try {
+				for (LSAUpdateSocket h: lsaupdates){
+					h.join();
+				}
+			} catch(InterruptedException e) {
+				System.out.println("Failed to wait for all threads sending LSAUPDATE");
+		  	}
 		}
 		
 		
@@ -656,7 +742,8 @@ public class Router {
 			LinkedList<LSAUpdateSocket> lsaupdates = new LinkedList<LSAUpdateSocket>();
 			
 			for(Link neighbor : ports){
-				if(neighbor == null) { continue; }
+				if(neighbor == null || neighbor.router2.status != RouterStatus.TWO_WAY) { continue; }
+				
 				if(dontForwardTo.contains(neighbor.router2.simulatedIPAddress)) { continue; }
 				
 				fwdMsg.dstIP = neighbor.router2.simulatedIPAddress;
@@ -708,7 +795,8 @@ public class Router {
 		private boolean isNeighbor(LSA lsa){
 
 			for(Link neighbor : ports){
-				if(neighbor != null && neighbor.router2.simulatedIPAddress.equals(lsa.linkStateID)){
+				if(neighbor != null && neighbor.router2.simulatedIPAddress.equals(lsa.linkStateID)
+						&& neighbor.router2.status == RouterStatus.TWO_WAY){
 					return true;
 				}
 			}
@@ -717,40 +805,21 @@ public class Router {
 		}
 		
 		private void updateNeighborWeight(LSA currMsgLSA){
-			boolean alreadyAdded = false;
 			
 			for(LinkDescription myNeighbor : lsd._store.get(rd.simulatedIPAddress).links){
 				// if LinkDescription already in LSA links
 				if(myNeighbor.linkID.equals(currMsgLSA.linkStateID)){
-					alreadyAdded = true;
 					
 					//Loop through to find weight in the neighbor's links
 					for(LinkDescription currMsgLSALink : currMsgLSA.links){
 						if(currMsgLSALink.linkID.equals(rd.simulatedIPAddress)){
+							//System.out.println(currMsgLSALink.tosMetrics);
 							myNeighbor.tosMetrics = (int)currMsgLSALink.tosMetrics;
 							break;
 						}
 					}
 								
 				}
-			}
-			
-			//(Possibly) finally getting the weight after receiving as a server
-			//Now we will add them as a neighbor in our LSA
-			if(!alreadyAdded){
-				int portNum = 0;
-				int currMsgLSAWeight = 0;
-				
-				//find the received lsa's stored link to us and get their values
-				for(LinkDescription l : currMsgLSA.links){
-					if(l.linkID.equals(currMsgLSA.linkStateID)){
-						portNum = l.portNum;
-						currMsgLSAWeight = l.tosMetrics;
-					}
-				}
-				
-				LinkDescription newLink = new LinkDescription(currMsgLSA.linkStateID, portNum, currMsgLSAWeight);
-				lsd._store.get(rd.simulatedIPAddress).links.add(newLink);
 			}
 		}
 		
