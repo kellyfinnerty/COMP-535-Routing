@@ -37,22 +37,28 @@ public class LinkStateDatabase {
 	// add neighbors of current router to unvisited list and initialize them in nodes list
 	LSA current = _store.get(rd.simulatedIPAddress);
 	for (LinkDescription l:current.links) {
+		if (l.linkID.equals(rd.simulatedIPAddress)) continue;
 		unvisited.add(l.linkID);
 		nodes.put(l.linkID, new NodeInfo(l.tosMetrics, rd.simulatedIPAddress));
+		System.out.println("Adding "+l.linkID+" "+rd.simulatedIPAddress+" "+l.tosMetrics);
 	}
 	
 	while (unvisited.size()>0) {
+		System.out.println("unvisited "+unvisited.toString());
+		System.out.println("nodes "+nodes.toString());
 		String tocheck = getClosestNode(unvisited, nodes);// need sort
 		
+		unvisited.remove(tocheck);
 		if (checked.contains(tocheck)) continue;
-//		System.out.println("checking "+tocheck);
+		System.out.println("checking "+tocheck);
 		current = _store.get(tocheck);
 		
 		if(current != null){
 			for (LinkDescription ld: current.links) {
-				if (!nodes.containsKey(ld.linkID)) {
+				if (!nodes.containsKey(ld.linkID) && !ld.linkID.equals(rd.simulatedIPAddress)) {
 					nodes.put(ld.linkID, new NodeInfo(nodes.get(tocheck).distance+ld.tosMetrics, tocheck));
 					unvisited.add(ld.linkID);
+					System.out.println("Adding "+ld.linkID+" "+rd.simulatedIPAddress+" "+ld.tosMetrics);
 				}
 				else if (nodes.get(ld.linkID).distance>nodes.get(tocheck).distance+ld.tosMetrics) 
 					nodes.replace(ld.linkID, new NodeInfo(nodes.get(tocheck).distance+ld.tosMetrics,tocheck));
@@ -65,24 +71,26 @@ public class LinkStateDatabase {
 	}
 	
 	// print out the shortest path
-	String result = destinationIP;
-	NodeInfo backtrackNode = nodes.get(destinationIP);
-	String prevIP = destinationIP;
-	
-	while (!prevIP.equals(rd.simulatedIPAddress)) {
-		prevIP = backtrackNode.prev;
-		int linkWeight = backtrackNode.distance - nodes.get(prevIP).distance;
-		result = new String(" ->(" + linkWeight + ") " + result);
-		
-		backtrackNode = nodes.get(prevIP);
-	}
-	
-	result = new String(rd.simulatedIPAddress+result);
-	System.out.println(result);
-	System.out.print(">>");
-	
-    return result;
+	return createOutputString(destinationIP, destinationIP, nodes);
   }
+  
+  
+  private String createOutputString(String destinationIP, String prevIP, HashMap<String, NodeInfo> nodes){
+		String result = destinationIP;
+		NodeInfo backtrackNode = nodes.get(destinationIP);
+		
+		while (!prevIP.equals(rd.simulatedIPAddress)) {
+			System.out.println("prev is "+prevIP);
+			prevIP = backtrackNode.prev;
+			int linkWeight = backtrackNode.distance - nodes.get(prevIP).distance;
+			result = new String(prevIP + " ->(" + linkWeight + ") " + result);
+
+			backtrackNode = nodes.get(prevIP);
+		}
+		
+		return result;
+	}
+  
   
   // a helper class for getShortestPath method
   class NodeInfo {
