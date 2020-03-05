@@ -40,26 +40,24 @@ public class LinkStateDatabase {
 		if (l.linkID.equals(rd.simulatedIPAddress)) continue;
 		unvisited.add(l.linkID);
 		nodes.put(l.linkID, new NodeInfo(l.tosMetrics, rd.simulatedIPAddress));
-		System.out.println("Adding "+l.linkID+" "+rd.simulatedIPAddress+" "+l.tosMetrics);
 	}
 	
 	while (unvisited.size()>0) {
-		System.out.println("unvisited "+unvisited.toString());
-		System.out.println("nodes "+nodes.toString());
 		String tocheck = getClosestNode(unvisited, nodes);// need sort
 		
 		unvisited.remove(tocheck);
+		// if already checked, just skip
 		if (checked.contains(tocheck)) continue;
-		System.out.println("checking "+tocheck);
 		current = _store.get(tocheck);
 		
 		if(current != null){
 			for (LinkDescription ld: current.links) {
+				// if this node has no distance yet, add distance and put into unvisited queue
 				if (!nodes.containsKey(ld.linkID) && !ld.linkID.equals(rd.simulatedIPAddress)) {
 					nodes.put(ld.linkID, new NodeInfo(nodes.get(tocheck).distance+ld.tosMetrics, tocheck));
 					unvisited.add(ld.linkID);
-					System.out.println("Adding "+ld.linkID+" "+rd.simulatedIPAddress+" "+ld.tosMetrics);
 				}
+				// else update the distance only if the distance is lower
 				else if (nodes.get(ld.linkID).distance>nodes.get(tocheck).distance+ld.tosMetrics) 
 					nodes.replace(ld.linkID, new NodeInfo(nodes.get(tocheck).distance+ld.tosMetrics,tocheck));
 			}
@@ -80,7 +78,6 @@ public class LinkStateDatabase {
 		NodeInfo backtrackNode = nodes.get(destinationIP);
 		
 		while (!prevIP.equals(rd.simulatedIPAddress)) {
-			System.out.println("prev is "+prevIP);
 			prevIP = backtrackNode.prev;
 			int linkWeight = backtrackNode.distance - nodes.get(prevIP).distance;
 			result = new String(prevIP + " ->(" + linkWeight + ") " + result);
