@@ -20,6 +20,8 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class Router {
 	
+	// use read write lock to ensure there are no more than one thread editing the public fields
+	// and there are no thread editing these fields when other threads are reading them
 	final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
 	final Lock readLock = lock.readLock();
 	final Lock writeLock = lock.writeLock();
@@ -618,37 +620,38 @@ public class Router {
 
 		
 		private void lsaupdateMessage(SOSPFPacket msg){
-			//lock
-			
-			boolean forward = false;	//tracks if we should forward the message
+			//tracks if we should forward the message
+			boolean forward = false;	
+			//tracks if current router need to send an updated LSA of itself
+			boolean includeItself = false;	
 			
 			//loop through all LSAs received
 			for(LSA currMsgLSA : msg.lsaArray){			
 				//add LSA to database if not already there or update if newer
-				if(!forward){
-					forward = addToDatabase(currMsgLSA); //check if it's ever TRUE that we need to forward the message
-				}		
+				//check if it's ever TRUE that we need to forward the message
+				if(!forward) forward = addToDatabase(currMsgLSA); 
+				//check if it's ever TRUE that current router need to forward itself
+				if(!includeItself) includeItself = forwardItself(currMsgLSA); 
 				
 				//add weight if not already stored in link
-				if(isNeighbor(currMsgLSA)){
-					updateNeighborWeight(currMsgLSA);
-				}	
+				if(isNeighbor(currMsgLSA)) updateNeighborWeight(currMsgLSA);
 			}
-
 			
+
 			//if the LSA was new, we need to forward it
 			if(forward){
 				SOSPFPacket msgToSend = createForwardMsg(msg);
 				forwardLSAUpdate(msgToSend, msg.routerID);
-				
-				
+
 				//init our own LSA update when receiving the original trigger for lsaupdate
-				if(msg.originalTrigger){
-					startLSAUpdates(false);	//false bc not original trigger but a response
-				}
+				if(msg.originalTrigger) startLSAUpdates(false);	//false bc not original trigger but a response
+					
+				
 			}
 			
-			
+			// create a new round of LSA update including only the latest version of itself
+			if(includeItself) startLSAUpdates(true);
+
 		}
 		
 		
@@ -656,7 +659,9 @@ public class Router {
 			LinkedList<LSAUpdateSocket> lsaupdates = new LinkedList<LSAUpdateSocket>();
 
 			for(Link neighbor : ports){
+				// don't forward to non-neighbor ports
 				if(neighbor == null || neighbor.router2.status != RouterStatus.TWO_WAY) continue; 
+				// don't forward if this neighbor is contained in string dontForwardTo
 				if(checkIfDontforward(dontForwardTo,neighbor.router2.simulatedIPAddress)) continue; 
 
 				fwdMsg.dstIP = neighbor.router2.simulatedIPAddress;
@@ -743,23 +748,27 @@ public class Router {
 		
 		
 		private boolean addToDatabase(LSA currMsgLSA){
-			
 			// if LSA is NOT in database, add it
 			if(lsd._store.get(currMsgLSA.linkStateID) == null){
-				lsd._store.put(currMsgLSA.linkStateID, currMsgLSA);	
 				return true;	//should forward bc LSA not in database
 			}
-			else{
-				// if currMsgLSA's sequence number > the currMsgLSAently stored one, update the lsa
-				if(lsd._store.get(currMsgLSA.linkStateID).lsaSeqNumber < currMsgLSA.lsaSeqNumber){
-					lsd._store.replace(currMsgLSA.linkStateID, lsd._store.get(currMsgLSA.linkStateID), currMsgLSA);	
-					return true;	// should forward bc LSA is newer
-					
-				}
+			// if currMsgLSA's sequence number > the currMsgLSAently stored one, update the LSA
+			else if(lsd._store.get(currMsgLSA.linkStateID).lsaSeqNumber < currMsgLSA.lsaSeqNumber){
+				lsd._store.replace(currMsgLSA.linkStateID, lsd._store.get(currMsgLSA.linkStateID), currMsgLSA);	
+				return true;	// should forward bc LSA is newer
 			}
 
 			return false;	//shouldn't forward
+		}
+
 			
+		private boolean forwardItself(LSA currMsgLSA){
+			if(lsd._store.get(currMsgLSA.linkStateID) == null){
+				// add this LSA into lsd of current router and prepare for forwarding LSA of current router
+				lsd._store.put(currMsgLSA.linkStateID, currMsgLSA);	
+				return true;	
+			}
+			return false;
 		}
 
 			

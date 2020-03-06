@@ -37,6 +37,7 @@ public class LinkStateDatabase {
 	// add neighbors of current router to unvisited list and initialize them in nodes list
 	LSA current = _store.get(rd.simulatedIPAddress);
 	for (LinkDescription l:current.links) {
+		// skip itself
 		if (l.linkID.equals(rd.simulatedIPAddress)) continue;
 		unvisited.add(l.linkID);
 		nodes.put(l.linkID, new NodeInfo(l.tosMetrics, rd.simulatedIPAddress));
@@ -52,12 +53,12 @@ public class LinkStateDatabase {
 		
 		if(current != null){
 			for (LinkDescription ld: current.links) {
-				// if this node has no distance yet, add distance and put into unvisited queue
+				// if this node has no distance yet (distance is infinity), add distance and put into unvisited queue
 				if (!nodes.containsKey(ld.linkID) && !ld.linkID.equals(rd.simulatedIPAddress)) {
 					nodes.put(ld.linkID, new NodeInfo(nodes.get(tocheck).distance+ld.tosMetrics, tocheck));
 					unvisited.add(ld.linkID);
 				}
-				// else update the distance only if the distance is lower
+				// else update the distance only if the distance calculated via this ld is lower
 				else if (nodes.get(ld.linkID).distance>nodes.get(tocheck).distance+ld.tosMetrics) 
 					nodes.replace(ld.linkID, new NodeInfo(nodes.get(tocheck).distance+ld.tosMetrics,tocheck));
 			}
