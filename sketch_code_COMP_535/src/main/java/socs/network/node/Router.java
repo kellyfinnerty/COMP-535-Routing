@@ -77,8 +77,11 @@ public class Router {
 	 * cost to transmitting data through the link
 	 * <p/>
 	 * NOTE: this command should not trigger link database synchronization
+	 * 
+	 * returns int indicating neighbor index (-1 if not added)
 	 */
-	private void processAttach(String processIP, short processPort, String simulatedIP, short weight) {
+	private int processAttach(String processIP, short processPort, String simulatedIP, short weight) {
+		int finalindex = -1;
 		
 		// acquire lock
 		writeLock.lock();
@@ -86,7 +89,7 @@ public class Router {
 		try{
 			if(rd.simulatedIPAddress.equals(simulatedIP)){
 				System.out.println("Cannot connect Router to itself");
-				return; 	//Don't want to attach to itself
+				return finalindex; 	//Don't want to attach to itself
 			}
 			
 			int openPort = -1;	//Check if there's an available neighbor port
@@ -96,9 +99,11 @@ public class Router {
 			for (int i = 0; i < 4; i++) {
 				if (ports[i] == null) {
 					openPort = i;
+					
 				}
 				else if(ports[i].router2.simulatedIPAddress.equals(simulatedIP)){
 					alreadyNeighbor = true;
+					finalindex = i;
 				}
 			}
 	
@@ -106,6 +111,7 @@ public class Router {
 			if (openPort != -1 && !alreadyNeighbor) {
 				RouterDescription rd2 = new RouterDescription(processIP, processPort, simulatedIP);
 				ports[openPort] = new Link(rd, rd2, weight);
+				finalindex = openPort;
 			} 
 			else if(alreadyNeighbor){
 				System.out.println("Unable to attach. Already neighbor.");
@@ -118,6 +124,8 @@ public class Router {
 			// release lock
 			writeLock.unlock();
 		}
+		
+		return finalindex;
 	}
 
 	/**
@@ -276,6 +284,8 @@ public class Router {
 		}
 		return null;
 	}
+	
+
 
 	/**
 	 * attach the link to the remote router, which is identified by the given
@@ -286,7 +296,39 @@ public class Router {
 	 * This command does trigger the link database synchronization
 	 */
 	private void processConnect(String processIP, short processPort, String simulatedIP, short weight) {
-
+		System.out.println("Started " + started);
+		
+		//check if start's been run yet
+		if(!started) {
+			System.out.println("Not started yet. Can't connect.");
+			return;
+		}
+		
+		// check for empty neighbor slot
+		int index = processAttach(processIP, processPort, simulatedIP, weight);
+		
+		// wasn't already a neighbor or added quit, or connection not started
+		if(index == -1 || ports[index].router2.status == RouterStatus.TWO_WAY) return;
+		
+			
+		writeLock.lock();
+		
+		try{
+			SOSPFPacket helloMsg = new SOSPFPacket((short) 0, rd.simulatedIPAddress, ports[index].router2.simulatedIPAddress,
+			rd.simulatedIPAddress, ports[index].router2.simulatedIPAddress, rd.processIPAddress, rd.processPortNumber);
+	
+			// start the thread to send HELLO and handle corresponding response
+			HelloSocket sendHello = new HelloSocket(ports[index], helloMsg);
+			ports[index].router2.status = RouterStatus.INIT;
+			sendHello.start();
+			
+			try{ sendHello.join();}
+			catch(Exception e){	System.out.println("Catch thread didn't finish"); }
+		}
+		finally{
+			writeLock.unlock();
+		}
+			
 	}
 
 	/**
@@ -334,11 +376,13 @@ public class Router {
 				} else if (command.startsWith("quit")) {
 					processQuit();
 				} else if (command.startsWith("attach ")) {
+					System.out.println("Attach called");
 					String[] cmdLine = command.split(" ");
 					processAttach(cmdLine[1], Short.parseShort(cmdLine[2]), cmdLine[3], Short.parseShort(cmdLine[4]));
 				} else if (command.equals("start")) {
 					processStart();
-				} else if (command.equals("connect ")) {
+				} else if (command.startsWith("connect ")) {
+					System.out.println("Connect called");
 					String[] cmdLine = command.split(" ");
 					processConnect(cmdLine[1], Short.parseShort(cmdLine[2]), cmdLine[3], Short.parseShort(cmdLine[4]));
 				} else if (command.equals("neighbors")) {
@@ -346,6 +390,11 @@ public class Router {
 					processNeighbors();
 				} else if (command.equals("lsd")){
 					System.out.println(lsd.toString());
+					
+				} else if (command.equals("ports")){
+					for(Link l : ports){
+						if(l!= null) System.out.println(l.router2.simulatedIPAddress);
+					}
 				} else {
 					// invalid command
 					break;
