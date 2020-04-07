@@ -67,8 +67,78 @@ public class Router {
 	 *            the port number which the link attaches at
 	 */
 	private void processDisconnect(short portNumber) {
-
+		// return if there is either no router connected with this port or the status is not TWO_WAY
+		if (ports[portNumber]==null || ports[portNumber].router2.status != RouterStatus.TWO_WAY) {
+			System.out.println("This port has no neighbor connected yet");
+			return;
+		}
+		
+		LSA thisRd = lsd._store.get(rd.simulatedIPAddress);
+		LSA remoteRd = lsd._store.get(ports[portNumber].router2.simulatedIPAddress);
+		
+		// remove the link to remote router from current router's LSA
+		LinkDescription remLd = null;
+		for(LinkDescription ld : thisRd.links) {
+			 if(ld.linkID.equals(ports[portNumber].router2.simulatedIPAddress)) remLd = ld;
+		}
+		thisRd.links.remove(remLd);
+		thisRd.lsaSeqNumber ++;
+		
+		// remove the link to current router from remote router's LSA
+		remLd = null;
+		for(LinkDescription ld : remoteRd.links) {
+			 if(ld.linkID.equals(rd.simulatedIPAddress)) remLd = ld;
+		}
+		remoteRd.links.remove(remLd);
+		remoteRd.lsaSeqNumber ++;
+		
+		// send LSAUpdate message of current and remote routers
+		sendRemLSAUpdate(ports[portNumber].router2.simulatedIPAddress);
+		
 	}
+	
+	// a helper method to send LSAUpdates to all other neighbors
+	public void sendRemLSAUpdate(String remoteRouter) {
+		LinkedList<LSAUpdateSocket> lsaupdates = new LinkedList<LSAUpdateSocket>();
+
+		writeLock.lock();
+		
+		try{
+			short lsaupdatemsg = 1;
+			String dontForwardTo = rd.simulatedIPAddress;
+			
+			//send out message
+			for (int i = 0; i < ports.length; i++) {
+				// If null or already initialized skip
+				if (ports[i] != null && ports[i].router2.status == RouterStatus.TWO_WAY) {
+					SOSPFPacket updateMsg = new SOSPFPacket(lsaupdatemsg, dontForwardTo, dontForwardTo,
+							rd.simulatedIPAddress, ports[i].router2.simulatedIPAddress, rd.processIPAddress, rd.processPortNumber);
+					updateMsg.originalTrigger = true;
+					updateMsg.lsaArray = new Vector<LSA>();
+					updateMsg.lsaArray.add(lsd._store.get(rd.simulatedIPAddress));	//add curr router's lsa
+					updateMsg.lsaArray.add(lsd._store.get(remoteRouter));	//add remote router's lsa
+					// start the thread to send LSAUPDATE and handle corresponding response
+					LSAUpdateSocket sendUpdate = new LSAUpdateSocket(ports[i], updateMsg);
+	
+					sendUpdate.start();
+					lsaupdates.add(sendUpdate);
+				}
+			}
+		}
+		finally{
+			writeLock.unlock();
+		}
+
+		
+		try {
+			for (LSAUpdateSocket h: lsaupdates){
+				h.join();
+			}
+		} catch(InterruptedException e) {
+			System.out.println("Failed to wait for all threads sending LSAUPDATE");
+	  	}
+	}
+
 
 	/**
 	 * attach the link to the remote router, which is identified by the given
@@ -376,13 +446,11 @@ public class Router {
 				} else if (command.startsWith("quit")) {
 					processQuit();
 				} else if (command.startsWith("attach ")) {
-					System.out.println("Attach called");
 					String[] cmdLine = command.split(" ");
 					processAttach(cmdLine[1], Short.parseShort(cmdLine[2]), cmdLine[3], Short.parseShort(cmdLine[4]));
 				} else if (command.equals("start")) {
 					processStart();
 				} else if (command.startsWith("connect ")) {
-					System.out.println("Connect called");
 					String[] cmdLine = command.split(" ");
 					processConnect(cmdLine[1], Short.parseShort(cmdLine[2]), cmdLine[3], Short.parseShort(cmdLine[4]));
 				} else if (command.equals("neighbors")) {
@@ -679,6 +747,9 @@ public class Router {
 				//add LSA to database if not already there or update if newer
 				//check if it's ever TRUE that we need to forward the message
 				if(!forward) forward = addToDatabase(currMsgLSA); 
+				else if(lsd._store.get(currMsgLSA.linkStateID).lsaSeqNumber < currMsgLSA.lsaSeqNumber)
+					lsd._store.replace(currMsgLSA.linkStateID, currMsgLSA);
+				
 				//check if it's ever TRUE that current router need to forward itself
 				if(!includeItself) includeItself = forwardItself(currMsgLSA); 
 				
@@ -803,7 +874,7 @@ public class Router {
 			}
 			// if currMsgLSA's sequence number > the currMsgLSAently stored one, update the LSA
 			else if(lsd._store.get(currMsgLSA.linkStateID).lsaSeqNumber < currMsgLSA.lsaSeqNumber){
-				lsd._store.replace(currMsgLSA.linkStateID, lsd._store.get(currMsgLSA.linkStateID), currMsgLSA);	
+				lsd._store.replace(currMsgLSA.linkStateID, currMsgLSA);
 				return true;	// should forward bc LSA is newer
 			}
 
